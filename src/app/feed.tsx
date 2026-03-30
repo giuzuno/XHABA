@@ -329,8 +329,11 @@ export default function Feed() {
       <View style={styles.header}>
         <Text style={styles.logo}>Xhaba</Text>
         <View style={{ flexDirection: 'row', gap: 16 }}>
+          <TouchableOpacity onPress={() => router.push('/battle')}>
+            <Text style={styles.salir}>⚔️</Text>
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => router.push('/perfil')}>
-            <Text style={styles.salir}>👤 Perfil</Text>
+            <Text style={styles.salir}>👤</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleLogout}>
             <Text style={styles.salir}>Salir</Text>
