@@ -20,6 +20,9 @@ export default function Feed() {
   const [cargando, setCargando] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
   const [misLikes, setMisLikes] = useState<number[]>([]);
+  const [comentarios, setComentarios] = useState<any>({});
+  const [nuevoComentario, setNuevoComentario] = useState<any>({});
+  const [mostrarComentarios, setMostrarComentarios] = useState<any>({});
 
   useEffect(() => {
     cargarUsuario();
@@ -32,44 +35,43 @@ export default function Feed() {
   }
 
   async function cargarOutfits() {
-  const { data } = await supabase
-    .from('outfits')
-    .select('*')
-    .order('created_at', { ascending: false });
+    const { data } = await supabase
+      .from('outfits')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-  if (data) {
-    const userIds = [...new Set(data.map((o: any) => o.user_id))];
-    const { data: perfilesData } = await supabase
-      .from('perfiles')
-      .select('user_id, username')
-      .in('user_id', userIds);
+    if (data) {
+      const userIds = [...new Set(data.map((o: any) => o.user_id))];
+      const { data: perfilesData } = await supabase
+        .from('perfiles')
+        .select('user_id, username')
+        .in('user_id', userIds);
 
-    const perfilesMap: any = {};
-    if (perfilesData) {
-      perfilesData.forEach((p: any) => {
-        perfilesMap[p.user_id] = p.username;
-      });
+      const perfilesMap: any = {};
+      if (perfilesData) {
+        perfilesData.forEach((p: any) => {
+          perfilesMap[p.user_id] = p.username;
+        });
+      }
+
+      const outfitsConNombre = data.map((o: any) => ({
+        ...o,
+        username: perfilesMap[o.user_id] || null,
+      }));
+
+      setOutfits(outfitsConNombre);
     }
 
-    const outfitsConNombre = data.map((o: any) => ({
-      ...o,
-      username: perfilesMap[o.user_id] || null,
-    }));
-
-    setOutfits(outfitsConNombre);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: likesData } = await supabase
+        .from('likes')
+        .select('outfit_id')
+        .eq('user_id', user.id);
+      if (likesData) setMisLikes(likesData.map((l: any) => l.outfit_id));
+    }
+    setCargando(false);
   }
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (user) {
-    const { data: likesData } = await supabase
-      .from('likes')
-      .select('outfit_id')
-      .eq('user_id', user.id);
-    if (likesData) setMisLikes(likesData.map((l: any) => l.outfit_id));
-  }
-  setCargando(false);
-}
-
 
   async function seleccionarImagen() {
     const input = document.createElement('input');
@@ -127,21 +129,65 @@ export default function Feed() {
     await cargarOutfits();
     setLoading(false);
   }
-  async function darLike(id: number, likesActuales: number) {
-  if (!userId) return;
-  if (misLikes.includes(id)) return;
 
-  await supabase.from('likes').insert({ user_id: userId, outfit_id: id });
-  await supabase
-    .from('outfits')
-    .update({ likes: likesActuales + 1 })
-    .eq('id', id);
-  cargarOutfits();
-}
-async function handleLogout() {
-  await supabase.auth.signOut();
-  router.replace('/');
-}
+  async function darLike(id: number, likesActuales: number) {
+    if (!userId) return;
+    if (misLikes.includes(id)) return;
+    await supabase.from('likes').insert({ user_id: userId, outfit_id: id });
+    await supabase
+      .from('outfits')
+      .update({ likes: likesActuales + 1 })
+      .eq('id', id);
+    cargarOutfits();
+  }
+
+  async function cargarComentarios(outfitId: number) {
+    const { data } = await supabase
+      .from('comentarios')
+      .select('*')
+      .eq('outfit_id', outfitId)
+      .order('created_at', { ascending: true });
+
+    if (data) {
+      const perfilesIds = [...new Set(data.map((c: any) => c.user_id))];
+      const { data: perfilesData } = await supabase
+        .from('perfiles')
+        .select('user_id, username')
+        .in('user_id', perfilesIds);
+
+      const perfilesMap: any = {};
+      if (perfilesData) {
+        perfilesData.forEach((p: any) => {
+          perfilesMap[p.user_id] = p.username;
+        });
+      }
+
+      const comentariosConNombre = data.map((c: any) => ({
+        ...c,
+        username: perfilesMap[c.user_id] || 'Usuario',
+      }));
+
+      setComentarios((prev: any) => ({ ...prev, [outfitId]: comentariosConNombre }));
+    }
+  }
+
+  async function publicarComentario(outfitId: number) {
+    const texto = nuevoComentario[outfitId];
+    if (!texto) return;
+    await supabase.from('comentarios').insert({
+      user_id: userId,
+      outfit_id: outfitId,
+      texto,
+      created_at: new Date().toISOString(),
+    });
+    setNuevoComentario((prev: any) => ({ ...prev, [outfitId]: '' }));
+    cargarComentarios(outfitId);
+  }
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    router.replace('/');
+  }
 
   function tiempoAtras(fecha: string) {
     const ahora = new Date();
@@ -178,18 +224,57 @@ async function handleLogout() {
         ) : null}
 
         <View style={styles.cardFooter}>
-          <TouchableOpacity
-  style={styles.likeBtn}
-  onPress={() => darLike(item.id, item.likes || 0)}
-  disabled={misLikes.includes(item.id)}
->
-  <Text style={styles.likeText}>
-    {misLikes.includes(item.id) ? '❤️' : '🤍'} {item.likes || 0}
-  </Text>
-</TouchableOpacity>
+          <View style={styles.acciones}>
+            <TouchableOpacity
+              style={styles.likeBtn}
+              onPress={() => darLike(item.id, item.likes || 0)}
+              disabled={misLikes.includes(item.id)}
+            >
+              <Text style={styles.likeText}>
+                {misLikes.includes(item.id) ? '❤️' : '🤍'} {item.likes || 0}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                const showing = !mostrarComentarios[item.id];
+                setMostrarComentarios((prev: any) => ({ ...prev, [item.id]: showing }));
+                if (showing) cargarComentarios(item.id);
+              }}
+            >
+              <Text style={styles.btnComentario}>
+                💬 {comentarios[item.id]?.length || 0}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           {item.descripcion ? (
             <Text style={styles.descripcion}>{item.descripcion}</Text>
           ) : null}
+
+          {mostrarComentarios[item.id] && (
+            <View style={styles.comentariosContainer}>
+              {(comentarios[item.id] || []).map((c: any) => (
+                <View key={c.id} style={styles.comentario}>
+                  <Text style={styles.comentarioUser}>{c.username}</Text>
+                  <Text style={styles.comentarioTexto}>{c.texto}</Text>
+                </View>
+              ))}
+              <View style={styles.inputComentario}>
+                <TextInput
+                  style={styles.inputComentarioTexto}
+                  placeholder="Escribe un comentario..."
+                  placeholderTextColor="#666"
+                  value={nuevoComentario[item.id] || ''}
+                  onChangeText={(text) =>
+                    setNuevoComentario((prev: any) => ({ ...prev, [item.id]: text }))
+                  }
+                />
+                <TouchableOpacity onPress={() => publicarComentario(item.id)}>
+                  <Text style={styles.btnEnviar}>→</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         </View>
       </View>
     );
@@ -198,11 +283,11 @@ async function handleLogout() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-  <Text style={styles.logo}>Xhaba</Text>
-  <TouchableOpacity onPress={() => router.push('/perfil')}>
-    <Text style={styles.salir}>👤 Perfil</Text>
-  </TouchableOpacity>
-</View>
+        <Text style={styles.logo}>Xhaba</Text>
+        <TouchableOpacity onPress={() => router.push('/perfil')}>
+          <Text style={styles.salir}>👤 Perfil</Text>
+        </TouchableOpacity>
+      </View>
 
       <View style={styles.publicar}>
         <TouchableOpacity style={styles.btnFoto} onPress={seleccionarImagen}>
@@ -388,5 +473,55 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 60,
     fontSize: 16,
+  },
+  acciones: {
+    flexDirection: 'row',
+    gap: 16,
+    alignItems: 'center',
+  },
+  btnComentario: {
+    fontSize: 16,
+    color: '#fff',
+  },
+  comentariosContainer: {
+    marginTop: 12,
+    gap: 8,
+  },
+  comentario: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'flex-start',
+  },
+  comentarioUser: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 13,
+  },
+  comentarioTexto: {
+    color: '#ccc',
+    fontSize: 13,
+    flex: 1,
+  },
+  inputComentario: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  inputComentarioTexto: {
+    flex: 1,
+    backgroundColor: '#111',
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    color: '#fff',
+    fontSize: 13,
+  },
+  btnEnviar: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: 'bold',
   },
 });
