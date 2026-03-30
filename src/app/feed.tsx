@@ -176,11 +176,11 @@ async function handleLogout() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.logo}>Xhaba</Text>
-        <TouchableOpacity onPress={handleLogout}>
-          <Text style={styles.salir}>Salir</Text>
-        </TouchableOpacity>
-      </View>
+  <Text style={styles.logo}>Xhaba</Text>
+  <TouchableOpacity onPress={() => router.push('/perfil')}>
+    <Text style={styles.salir}>👤 Perfil</Text>
+  </TouchableOpacity>
+</View>
 
       <View style={styles.publicar}>
         <TouchableOpacity style={styles.btnFoto} onPress={seleccionarImagen}>
