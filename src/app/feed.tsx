@@ -21,12 +21,14 @@ export default function Feed() {
   const [userId, setUserId] = useState<string | null>(null);
   const [misLikes, setMisLikes] = useState<number[]>([]);
   const [comentarios, setComentarios] = useState<any>({});
+  const [siguiendo, setSiguiendo] = useState<string[]>([]);
   const [nuevoComentario, setNuevoComentario] = useState<any>({});
   const [mostrarComentarios, setMostrarComentarios] = useState<any>({});
 
   useEffect(() => {
     cargarUsuario();
     cargarOutfits();
+    cargarSiguiendo();
   }, []);
 
   async function cargarUsuario() {
@@ -184,6 +186,32 @@ export default function Feed() {
     cargarComentarios(outfitId);
   }
 
+  async function cargarSiguiendo() {
+    if (!userId) return;
+    const { data } = await supabase
+      .from('seguidores')
+      .select('following_id')
+      .eq('follower_id', userId);
+    if (data) setSiguiendo(data.map((s: any) => s.following_id));
+  }
+
+  async function toggleSeguir(otherUserId: string) {
+    if (!userId) return;
+    if (siguiendo.includes(otherUserId)) {
+      await supabase
+        .from('seguidores')
+        .delete()
+        .eq('follower_id', userId)
+        .eq('following_id', otherUserId);
+      setSiguiendo(siguiendo.filter((id) => id !== otherUserId));
+    } else {
+      await supabase
+        .from('seguidores')
+        .insert({ follower_id: userId, following_id: otherUserId });
+      setSiguiendo([...siguiendo, otherUserId]);
+    }
+  }
+
   async function handleLogout() {
     await supabase.auth.signOut();
     router.replace('/');
@@ -213,6 +241,22 @@ export default function Feed() {
             </Text>
             <Text style={styles.tiempo}>{tiempoAtras(item.created_at)}</Text>
           </View>
+          {!esMio && (
+            <TouchableOpacity
+              style={[
+                styles.btnSeguir,
+                siguiendo.includes(item.user_id) && styles.btnSiguiendo,
+              ]}
+              onPress={() => toggleSeguir(item.user_id)}
+            >
+              <Text style={[
+                styles.btnSeguirText,
+                siguiendo.includes(item.user_id) && styles.btnSiguiendoText,
+              ]}>
+                {siguiendo.includes(item.user_id) ? 'Siguiendo' : 'Seguir'}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {item.imagen_url ? (
@@ -284,9 +328,14 @@ export default function Feed() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.logo}>Xhaba</Text>
-        <TouchableOpacity onPress={() => router.push('/perfil')}>
-          <Text style={styles.salir}>👤 Perfil</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 16 }}>
+          <TouchableOpacity onPress={() => router.push('/perfil')}>
+            <Text style={styles.salir}>👤 Perfil</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleLogout}>
+            <Text style={styles.salir}>Salir</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.publicar}>
@@ -523,5 +572,23 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 20,
     fontWeight: 'bold',
+  },
+  btnSeguir: {
+    borderWidth: 1,
+    borderColor: '#fff',
+    borderRadius: 20,
+    paddingVertical: 4,
+    paddingHorizontal: 14,
+  },
+  btnSiguiendo: {
+    backgroundColor: '#fff',
+  },
+  btnSeguirText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  btnSiguiendoText: {
+    color: '#000',
   },
 });
