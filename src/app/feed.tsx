@@ -19,6 +19,7 @@ export default function Feed() {
   const [loading, setLoading] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
+  const [misLikes, setMisLikes] = useState<number[]>([]);
 
   useEffect(() => {
     cargarUsuario();
@@ -31,13 +32,22 @@ export default function Feed() {
   }
 
   async function cargarOutfits() {
-    const { data } = await supabase
-      .from('outfits')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (data) setOutfits(data);
-    setCargando(false);
+  const { data } = await supabase
+    .from('outfits')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (data) setOutfits(data);
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user) {
+    const { data: likesData } = await supabase
+      .from('likes')
+      .select('outfit_id')
+      .eq('user_id', user.id);
+    if (likesData) setMisLikes(likesData.map((l: any) => l.outfit_id));
   }
+  setCargando(false);
+}
 
   async function seleccionarImagen() {
     const input = document.createElement('input');
@@ -95,19 +105,21 @@ export default function Feed() {
     await cargarOutfits();
     setLoading(false);
   }
+  async function darLike(id: number, likesActuales: number) {
+  if (!userId) return;
+  if (misLikes.includes(id)) return;
 
-  async function darLike(id: string, likesActuales: number) {
-    await supabase
-      .from('outfits')
-      .update({ likes: likesActuales + 1 })
-      .eq('id', id);
-    cargarOutfits();
-  }
-
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    router.replace('/');
-  }
+  await supabase.from('likes').insert({ user_id: userId, outfit_id: id });
+  await supabase
+    .from('outfits')
+    .update({ likes: likesActuales + 1 })
+    .eq('id', id);
+  cargarOutfits();
+}
+async function handleLogout() {
+  await supabase.auth.signOut();
+  router.replace('/');
+}
 
   function tiempoAtras(fecha: string) {
     const ahora = new Date();
@@ -145,11 +157,14 @@ export default function Feed() {
 
         <View style={styles.cardFooter}>
           <TouchableOpacity
-            style={styles.likeBtn}
-            onPress={() => darLike(item.id, item.likes || 0)}
-          >
-            <Text style={styles.likeText}>❤️ {item.likes || 0}</Text>
-          </TouchableOpacity>
+  style={styles.likeBtn}
+  onPress={() => darLike(item.id, item.likes || 0)}
+  disabled={misLikes.includes(item.id)}
+>
+  <Text style={styles.likeText}>
+    {misLikes.includes(item.id) ? '❤️' : '🤍'} {item.likes || 0}
+  </Text>
+</TouchableOpacity>
           {item.descripcion ? (
             <Text style={styles.descripcion}>{item.descripcion}</Text>
           ) : null}
