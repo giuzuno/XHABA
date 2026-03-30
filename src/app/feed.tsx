@@ -121,7 +121,11 @@ export default function Feed() {
     return (
       <View style={styles.card}>
         {item.imagen_url ? (
-          <Image source={{ uri: item.imagen_url }} style={styles.imagen} />
+          <Image 
+  source={{ uri: item.imagen_url }} 
+  style={styles.imagen}
+  resizeMode="contain"
+/>
         ) : (
           <View style={styles.imagenPlaceholder}>
             <Text style={styles.placeholderText}>📸</Text>
@@ -275,12 +279,14 @@ const styles = StyleSheet.create({
     borderBottomColor: '#222',
     padding: 16,
   },
+
   imagen: {
-    width: '100%',
-    height: 400,
-    borderRadius: 12,
-    marginBottom: 12,
-  },
+  width: '100%',
+  height: 400,
+  borderRadius: 12,
+  marginBottom: 12,
+},
+
   imagenPlaceholder: {
     width: '100%',
     height: 200,
