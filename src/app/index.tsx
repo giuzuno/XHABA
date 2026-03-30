@@ -17,14 +17,17 @@ export default function Index() {
   const [message, setMessage] = useState('');
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) router.replace('/feed');
-    });
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    if (session) router.replace('/feed');
+  });
 
-    supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) router.replace('/feed');
-    });
-  }, []);
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    if (_event === 'SIGNED_IN') router.replace('/feed');
+    if (_event === 'SIGNED_OUT') router.replace('/');
+  });
+
+  return () => subscription.unsubscribe();
+}, []);
 
     async function handleLogin() {
   setLoading(true);
