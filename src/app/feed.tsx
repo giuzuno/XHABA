@@ -18,10 +18,17 @@ export default function Feed() {
   const [imagen, setImagen] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [cargando, setCargando] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
+    cargarUsuario();
     cargarOutfits();
   }, []);
+
+  async function cargarUsuario() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) setUserId(user.id);
+  }
 
   async function cargarOutfits() {
     const { data } = await supabase
@@ -33,76 +40,61 @@ export default function Feed() {
   }
 
   async function seleccionarImagen() {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'image/*';
-  input.onchange = async (e: any) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setImagen(ev.target?.result as string);
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async (e: any) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setImagen(ev.target?.result as string);
+      };
+      reader.readAsDataURL(file);
     };
-    reader.readAsDataURL(file);
-  };
-  input.click();
-}
-
- async function subirImagen(uri: string, userId: string) {
-  const fileName = `${userId}/${Date.now()}.jpg`;
-  
-  const base64 = uri.split(',')[1];
-  const byteCharacters = atob(base64);
-  const byteNumbers = new Array(byteCharacters.length);
-  for (let i = 0; i < byteCharacters.length; i++) {
-    byteNumbers[i] = byteCharacters.charCodeAt(i);
-  }
-  const byteArray = new Uint8Array(byteNumbers);
-  const blob = new Blob([byteArray], { type: 'image/jpeg' });
-
-  const { error } = await supabase.storage
-    .from('outfits')
-    .upload(fileName, blob, { contentType: 'image/jpeg' });
-
-  if (error) {
-    console.log('error subiendo imagen:', error);
-    return null;
+    input.click();
   }
 
-  const { data: urlData } = supabase.storage
-    .from('outfits')
-    .getPublicUrl(fileName);
-
-  return urlData.publicUrl;
-}
+  async function subirImagen(uri: string, uid: string) {
+    const fileName = `${uid}/${Date.now()}.jpg`;
+    const base64 = uri.split(',')[1];
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: 'image/jpeg' });
+    const { error } = await supabase.storage
+      .from('outfits')
+      .upload(fileName, blob, { contentType: 'image/jpeg' });
+    if (error) return null;
+    const { data: urlData } = supabase.storage
+      .from('outfits')
+      .getPublicUrl(fileName);
+    return urlData.publicUrl;
+  }
 
   async function publicar() {
-  if (!descripcion && !imagen) return;
-  setLoading(true);
-  const { data: { user } } = await supabase.auth.getUser();
-  console.log('usuario:', user?.id);
-  console.log('imagen:', imagen ? 'hay imagen' : 'no hay imagen');
-  
-  let imagen_url = null;
-  if (imagen && user) {
-    imagen_url = await subirImagen(imagen, user.id);
-    console.log('imagen_url resultado:', imagen_url);
+    if (!descripcion && !imagen) return;
+    setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    let imagen_url = null;
+    if (imagen && user) {
+      imagen_url = await subirImagen(imagen, user.id);
+    }
+    await supabase.from('outfits').insert({
+      user_id: user?.id,
+      descripcion,
+      imagen_url,
+      likes: 0,
+      created_at: new Date().toISOString(),
+    });
+    setDescripcion('');
+    setImagen(null);
+    await cargarOutfits();
+    setLoading(false);
   }
-  
-  const { error } = await supabase.from('outfits').insert({
-    user_id: user?.id,
-    descripcion,
-    imagen_url,
-    likes: 0,
-    created_at: new Date().toISOString(),
-  });
-  
-  console.log('error insert:', error);
-  setDescripcion('');
-  setImagen(null);
-  await cargarOutfits();
-  setLoading(false);
-}
 
   async function darLike(id: string, likesActuales: number) {
     await supabase
@@ -117,28 +109,50 @@ export default function Feed() {
     router.replace('/');
   }
 
+  function tiempoAtras(fecha: string) {
+    const ahora = new Date();
+    const creado = new Date(fecha);
+    const diff = Math.floor((ahora.getTime() - creado.getTime()) / 1000);
+    if (diff < 60) return 'ahora';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+    return `${Math.floor(diff / 86400)}d`;
+  }
+
   function renderOutfit({ item }: any) {
+    const esMio = item.user_id === userId;
     return (
       <View style={styles.card}>
-        {item.imagen_url ? (
-          <Image 
-  source={{ uri: item.imagen_url }} 
-  style={styles.imagen}
-  resizeMode="contain"
-/>
-        ) : (
-          <View style={styles.imagenPlaceholder}>
-            <Text style={styles.placeholderText}>📸</Text>
+        <View style={styles.cardHeader}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>👤</Text>
           </View>
-        )}
-        <View style={styles.cardInfo}>
-          <Text style={styles.descripcion}>{item.descripcion}</Text>
+          <View style={styles.cardHeaderInfo}>
+            <Text style={styles.username}>
+              {esMio ? 'Tú' : 'Usuario'}
+            </Text>
+            <Text style={styles.tiempo}>{tiempoAtras(item.created_at)}</Text>
+          </View>
+        </View>
+
+        {item.imagen_url ? (
+          <Image
+            source={{ uri: item.imagen_url }}
+            style={styles.imagen}
+            resizeMode="contain"
+          />
+        ) : null}
+
+        <View style={styles.cardFooter}>
           <TouchableOpacity
             style={styles.likeBtn}
             onPress={() => darLike(item.id, item.likes || 0)}
           >
             <Text style={styles.likeText}>❤️ {item.likes || 0}</Text>
           </TouchableOpacity>
+          {item.descripcion ? (
+            <Text style={styles.descripcion}>{item.descripcion}</Text>
+          ) : null}
         </View>
       </View>
     );
@@ -164,16 +178,16 @@ export default function Feed() {
         <View style={styles.inputContainer}>
           <TextInput
             style={styles.input}
-            placeholder="Describe tu outfit..."
+            placeholder="¿Qué outfit usas hoy?"
             placeholderTextColor="#666"
             value={descripcion}
             onChangeText={setDescripcion}
             multiline
           />
           <TouchableOpacity
-            style={styles.btnPublicar}
+            style={[styles.btnPublicar, (!descripcion && !imagen) && styles.btnDesactivado]}
             onPress={publicar}
-            disabled={loading}
+            disabled={loading || (!descripcion && !imagen)}
           >
             {loading ? (
               <ActivityIndicator color="#000" />
@@ -191,7 +205,7 @@ export default function Feed() {
       ) : (
         <FlatList
           data={outfits}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => item.id.toString()}
           renderItem={renderOutfit}
           contentContainerStyle={{ paddingBottom: 40 }}
         />
@@ -209,33 +223,33 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
-    paddingTop: 40,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#222',
+    borderBottomColor: '#1a1a1a',
   },
   logo: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#FFFFFF',
     letterSpacing: 2,
   },
   salir: {
-    color: '#666',
+    color: '#555',
     fontSize: 14,
   },
   publicar: {
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#222',
+    borderBottomColor: '#1a1a1a',
     flexDirection: 'row',
     gap: 12,
   },
   btnFoto: {
-    width: 64,
-    height: 64,
+    width: 56,
+    height: 56,
     backgroundColor: '#111',
-    borderRadius: 12,
+    borderRadius: 28,
     borderWidth: 1,
     borderColor: '#333',
     justifyContent: 'center',
@@ -243,31 +257,34 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   btnFotoText: {
-    fontSize: 24,
+    fontSize: 20,
   },
   preview: {
-    width: 64,
-    height: 64,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
   },
   inputContainer: {
     flex: 1,
     gap: 8,
   },
   input: {
-    backgroundColor: '#111',
-    borderWidth: 1,
-    borderColor: '#333',
-    borderRadius: 12,
-    padding: 12,
+    backgroundColor: '#000',
+    borderWidth: 0,
+    padding: 8,
     color: '#fff',
-    fontSize: 14,
+    fontSize: 16,
     minHeight: 44,
   },
   btnPublicar: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 12,
-    alignItems: 'center',
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    alignSelf: 'flex-end',
+  },
+  btnDesactivado: {
+    backgroundColor: '#333',
   },
   btnPublicarText: {
     color: '#000',
@@ -276,47 +293,61 @@ const styles = StyleSheet.create({
   },
   card: {
     borderBottomWidth: 1,
-    borderBottomColor: '#222',
-    padding: 16,
+    borderBottomColor: '#1a1a1a',
+    paddingVertical: 12,
   },
-
-  imagen: {
-  width: '100%',
-  height: 400,
-  borderRadius: 12,
-  marginBottom: 12,
-},
-
-  imagenPlaceholder: {
-    width: '100%',
-    height: 200,
-    backgroundColor: '#111',
-    borderRadius: 12,
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    gap: 10,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#222',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
   },
-  placeholderText: {
-    fontSize: 48,
-  },
-  cardInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  descripcion: {
-    color: '#fff',
-    fontSize: 16,
-    flex: 1,
-  },
-  likeBtn: {
-    padding: 8,
-  },
-  likeText: {
+  avatarText: {
     fontSize: 18,
   },
+  cardHeaderInfo: {
+    flex: 1,
+  },
+  username: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  tiempo: {
+    color: '#555',
+    fontSize: 12,
+  },
+  imagen: {
+    width: '100%',
+    height: 400,
+    marginBottom: 8,
+  },
+  cardFooter: {
+    paddingHorizontal: 16,
+    gap: 6,
+  },
+  likeBtn: {
+    alignSelf: 'flex-start',
+  },
+  likeText: {
+    fontSize: 16,
+  },
+  descripcion: {
+    color: '#ccc',
+    fontSize: 14,
+    lineHeight: 20,
+  },
   vacio: {
-    color: '#666',
+    color: '#555',
     textAlign: 'center',
     marginTop: 60,
     fontSize: 16,
