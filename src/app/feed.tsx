@@ -36,7 +36,28 @@ export default function Feed() {
     .from('outfits')
     .select('*')
     .order('created_at', { ascending: false });
-  if (data) setOutfits(data);
+
+  if (data) {
+    const userIds = [...new Set(data.map((o: any) => o.user_id))];
+    const { data: perfilesData } = await supabase
+      .from('perfiles')
+      .select('user_id, username')
+      .in('user_id', userIds);
+
+    const perfilesMap: any = {};
+    if (perfilesData) {
+      perfilesData.forEach((p: any) => {
+        perfilesMap[p.user_id] = p.username;
+      });
+    }
+
+    const outfitsConNombre = data.map((o: any) => ({
+      ...o,
+      username: perfilesMap[o.user_id] || null,
+    }));
+
+    setOutfits(outfitsConNombre);
+  }
 
   const { data: { user } } = await supabase.auth.getUser();
   if (user) {
@@ -48,6 +69,7 @@ export default function Feed() {
   }
   setCargando(false);
 }
+
 
   async function seleccionarImagen() {
     const input = document.createElement('input');
@@ -141,7 +163,7 @@ async function handleLogout() {
           </View>
           <View style={styles.cardHeaderInfo}>
             <Text style={styles.username}>
-              {esMio ? 'Tú' : 'Usuario'}
+              {item.username || (esMio ? 'Tú' : 'Usuario')}
             </Text>
             <Text style={styles.tiempo}>{tiempoAtras(item.created_at)}</Text>
           </View>
