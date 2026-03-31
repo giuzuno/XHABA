@@ -8,7 +8,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 import { supabase } from '../lib/supabase';
 
@@ -24,6 +24,7 @@ export default function Feed() {
   const [siguiendo, setSiguiendo] = useState<string[]>([]);
   const [nuevoComentario, setNuevoComentario] = useState<any>({});
   const [mostrarComentarios, setMostrarComentarios] = useState<any>({});
+  const [categoria, setCategoria] = useState('');
 
   useEffect(() => {
     cargarUsuario();
@@ -123,11 +124,13 @@ export default function Feed() {
       user_id: user?.id,
       descripcion,
       imagen_url,
+      categoria,
       likes: 0,
       created_at: new Date().toISOString(),
     });
     setDescripcion('');
     setImagen(null);
+    setCategoria('');
     await cargarOutfits();
     setLoading(false);
   }
@@ -291,6 +294,10 @@ export default function Feed() {
             </TouchableOpacity>
           </View>
 
+          {item.categoria ? (
+            <Text style={styles.categoriaTag}>{item.categoria}</Text>
+          ) : null}
+
           {item.descripcion ? (
             <Text style={styles.descripcion}>{item.descripcion}</Text>
           ) : null}
@@ -328,18 +335,9 @@ export default function Feed() {
     <View style={styles.container}>
       <View style={styles.header}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-  <svg width="28" height="24" viewBox="0 0 28 24" fill="none">
-    <path d="M14 2C14 2 11 2 11 5C11 6.5 12 7.5 13 8L3 16C2 16.8 2 18 3 19C4 20 5.5 20 6 20H22C22.5 20 24 20 25 19C26 18 26 16.8 25 16L15 8C16 7.5 17 6.5 17 5C17 2 14 2 14 2Z" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-  </svg>
-  <Text style={styles.logo}>Xhaba</Text>
-</View>
+          <Text style={styles.logo}>🧥 Xhaba</Text>
+        </View>
         <View style={{ flexDirection: 'row', gap: 16 }}>
-          <TouchableOpacity onPress={() => router.push('/battle')}>
-            <Text style={styles.salir}>⚔️</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.push('/perfil')}>
-            <Text style={styles.salir}>👤</Text>
-          </TouchableOpacity>
           <TouchableOpacity onPress={handleLogout}>
             <Text style={styles.salir}>Salir</Text>
           </TouchableOpacity>
@@ -363,6 +361,19 @@ export default function Feed() {
             onChangeText={setDescripcion}
             multiline
           />
+          <View style={styles.categorias}>
+            {['👕 Casual', '🏋️ Deportivo', '👔 Formal', '🌆 Urbano', '🏖️ Playa', '❄️ Invierno', '🎉 Fiesta'].map((cat) => (
+            <TouchableOpacity
+             key={cat}
+            style={[styles.categoriaBtn, categoria === cat && styles.categoriaBtnActivo]}
+              onPress={() => setCategoria(categoria === cat ? '' : cat)}
+            >
+            <Text style={[styles.categoriaBtnText, categoria === cat && styles.categoriaBtnTextoActivo]}>
+             {cat}
+           </Text>
+            </TouchableOpacity>
+             ))}
+          </View>
           <TouchableOpacity
             style={[styles.btnPublicar, (!descripcion && !imagen) && styles.btnDesactivado]}
             onPress={publicar}
@@ -454,6 +465,37 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     minHeight: 44,
+  },
+     categorias: {
+     flexDirection: 'row',
+     flexWrap: 'wrap',
+     gap: 8,
+     marginTop: 4,
+    },
+  categoriaBtn: {
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 20,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    marginRight: 8,
+  },
+  categoriaBtnActivo: {
+    backgroundColor: '#fff',
+    borderColor: '#fff',
+  },
+  categoriaBtnText: {
+    color: '#666',
+    fontSize: 12,
+  },
+  categoriaBtnTextoActivo: {
+    color: '#000',
+    fontWeight: 'bold',
+  },
+  categoriaTag: {
+    color: '#888',
+    fontSize: 12,
+    marginTop: 4,
   },
   btnPublicar: {
     backgroundColor: '#FFFFFF',
