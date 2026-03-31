@@ -42,13 +42,22 @@ export default function Index() {
 
   }
 
-  async function handleRegister() {
-    setLoading(true);
-    const { error } = await supabase.auth.signUp({ email, password });
-    if (error) setMessage(error.message);
-    else setMessage('¡Revisa tu correo para confirmar tu cuenta!');
+async function handleRegister() {
+  setLoading(true);
+  setMessage('');
+  const { data, error } = await supabase.auth.signUp({ email, password });
+  if (error) {
+    setMessage(error.message);
     setLoading(false);
+    return;
   }
+  if (data.user) {
+    router.replace('/onboarding');
+  } else {
+    setMessage('¡Revisa tu correo para confirmar tu cuenta!');
+  }
+  setLoading(false);
+}
 
   return (
     <View style={styles.container}>
