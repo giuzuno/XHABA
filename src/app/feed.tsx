@@ -327,7 +327,12 @@ export default function Feed() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.logo}>Xhaba</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+  <svg width="28" height="24" viewBox="0 0 28 24" fill="none">
+    <path d="M14 2C14 2 11 2 11 5C11 6.5 12 7.5 13 8L3 16C2 16.8 2 18 3 19C4 20 5.5 20 6 20H22C22.5 20 24 20 25 19C26 18 26 16.8 25 16L15 8C16 7.5 17 6.5 17 5C17 2 14 2 14 2Z" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+  </svg>
+  <Text style={styles.logo}>Xhaba</Text>
+</View>
         <View style={{ flexDirection: 'row', gap: 16 }}>
           <TouchableOpacity onPress={() => router.push('/battle')}>
             <Text style={styles.salir}>⚔️</Text>
