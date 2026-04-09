@@ -3,7 +3,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export default function RootLayout() {
   const pathname = usePathname();
-  const showNav = ['/', '/feed', '/perfil', '/battle'].includes(pathname) && pathname !== '/';
+  const showNav = ['/feed', '/perfil', '/battle', '/buscar'].includes(pathname);
 
   return (
     <View style={styles.container}>
@@ -20,9 +20,21 @@ export default function RootLayout() {
             <Text style={[styles.navIcon, pathname === '/feed' && styles.navActivo]}>
               🏠
             </Text>
-            <Text style={[styles.navLabel, pathname === '/feed' && styles.navActivo]}>
+            <Text style={[styles.navLabel, pathname === '/feed' && styles.navLabelActivo]}>
               Feed
             </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+           style={styles.navItem}
+            onPress={() => router.replace('/feed')}
+          >
+          <Text style={[styles.navIcon, pathname === '/feed' && styles.navActivo]}>
+           ➕
+           </Text>
+           <Text style={[styles.navLabel, pathname === '/feed' && styles.navLabelActivo]}>
+            Publicar
+          </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -32,7 +44,7 @@ export default function RootLayout() {
             <Text style={[styles.navIcon, pathname === '/battle' && styles.navActivo]}>
               ⚔️
             </Text>
-            <Text style={[styles.navLabel, pathname === '/battle' && styles.navActivo]}>
+            <Text style={[styles.navLabel, pathname === '/battle' && styles.navLabelActivo]}>
               Battles
             </Text>
           </TouchableOpacity>
@@ -44,7 +56,7 @@ export default function RootLayout() {
             <Text style={[styles.navIcon, pathname === '/perfil' && styles.navActivo]}>
               👤
             </Text>
-            <Text style={[styles.navLabel, pathname === '/perfil' && styles.navActivo]}>
+            <Text style={[styles.navLabel, pathname === '/perfil' && styles.navLabelActivo]}>
               Perfil
             </Text>
           </TouchableOpacity>
@@ -85,6 +97,8 @@ const styles = StyleSheet.create({
   },
   navActivo: {
     opacity: 1,
+  },
+  navLabelActivo: {
     color: '#fff',
   },
 });

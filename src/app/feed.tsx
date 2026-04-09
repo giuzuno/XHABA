@@ -233,34 +233,19 @@ export default function Feed() {
   function renderOutfit({ item }: any) {
     const esMio = item.user_id === userId;
     return (
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>👤</Text>
-          </View>
-          <View style={styles.cardHeaderInfo}>
-            <Text style={styles.username}>
-              {item.username || (esMio ? 'Tú' : 'Usuario')}
-            </Text>
-            <Text style={styles.tiempo}>{tiempoAtras(item.created_at)}</Text>
-          </View>
-          {!esMio && (
-            <TouchableOpacity
-              style={[
-                styles.btnSeguir,
-                siguiendo.includes(item.user_id) && styles.btnSiguiendo,
-              ]}
-              onPress={() => toggleSeguir(item.user_id)}
-            >
-              <Text style={[
-                styles.btnSeguirText,
-                siguiendo.includes(item.user_id) && styles.btnSiguiendoText,
-              ]}>
-                {siguiendo.includes(item.user_id) ? 'Siguiendo' : 'Seguir'}
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
+      <View style={styles.header}>
+  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+    <Text style={styles.logo}>🧥 Xhaba</Text>
+  </View>
+  <View style={{ flexDirection: 'row', gap: 16, alignItems: 'center' }}>
+    <TouchableOpacity onPress={() => router.push('/buscar')}>
+      <Text style={{ fontSize: 20 }}>🔍</Text>
+    </TouchableOpacity>
+    <TouchableOpacity onPress={handleLogout}>
+      <Text style={styles.salir}>Salir</Text>
+    </TouchableOpacity>
+  </View>
+
 
         {item.imagen_url ? (
           <Image
