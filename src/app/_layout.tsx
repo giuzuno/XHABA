@@ -17,48 +17,32 @@ export default function RootLayout() {
             style={styles.navItem}
             onPress={() => router.replace('/feed')}
           >
-            <Text style={[styles.navIcon, pathname === '/feed' && styles.navActivo]}>
-              🏠
-            </Text>
-            <Text style={[styles.navLabel, pathname === '/feed' && styles.navLabelActivo]}>
-              Feed
-            </Text>
+            <Text style={[styles.navIcon, pathname === '/feed' && styles.navActivo]}>🏠</Text>
+            <Text style={[styles.navLabel, pathname === '/feed' && styles.navLabelActivo]}>Feed</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-           style={styles.navItem}
-            onPress={() => router.replace('/feed')}
+            style={styles.navItem}
+            onPress={() => router.replace('/buscar')}
           >
-          <Text style={[styles.navIcon, pathname === '/feed' && styles.navActivo]}>
-           ➕
-           </Text>
-           <Text style={[styles.navLabel, pathname === '/feed' && styles.navLabelActivo]}>
-            Publicar
-          </Text>
+            <Text style={[styles.navIcon, pathname === '/buscar' && styles.navActivo]}>🔍</Text>
+            <Text style={[styles.navLabel, pathname === '/buscar' && styles.navLabelActivo]}>Buscar</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.navItem}
             onPress={() => router.replace('/battle')}
           >
-            <Text style={[styles.navIcon, pathname === '/battle' && styles.navActivo]}>
-              ⚔️
-            </Text>
-            <Text style={[styles.navLabel, pathname === '/battle' && styles.navLabelActivo]}>
-              Battles
-            </Text>
+            <Text style={[styles.navIcon, pathname === '/battle' && styles.navActivo]}>⚔️</Text>
+            <Text style={[styles.navLabel, pathname === '/battle' && styles.navLabelActivo]}>Battles</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.navItem}
             onPress={() => router.replace('/perfil')}
           >
-            <Text style={[styles.navIcon, pathname === '/perfil' && styles.navActivo]}>
-              👤
-            </Text>
-            <Text style={[styles.navLabel, pathname === '/perfil' && styles.navLabelActivo]}>
-              Perfil
-            </Text>
+            <Text style={[styles.navIcon, pathname === '/perfil' && styles.navActivo]}>👤</Text>
+            <Text style={[styles.navLabel, pathname === '/perfil' && styles.navLabelActivo]}>Perfil</Text>
           </TouchableOpacity>
         </View>
       )}

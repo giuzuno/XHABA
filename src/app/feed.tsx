@@ -8,7 +8,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
 
@@ -233,19 +233,34 @@ export default function Feed() {
   function renderOutfit({ item }: any) {
     const esMio = item.user_id === userId;
     return (
-      <View style={styles.header}>
-  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-    <Text style={styles.logo}>🧥 Xhaba</Text>
-  </View>
-  <View style={{ flexDirection: 'row', gap: 16, alignItems: 'center' }}>
-    <TouchableOpacity onPress={() => router.push('/buscar')}>
-      <Text style={{ fontSize: 20 }}>🔍</Text>
-    </TouchableOpacity>
-    <TouchableOpacity onPress={handleLogout}>
-      <Text style={styles.salir}>Salir</Text>
-    </TouchableOpacity>
-  </View>
-
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>👤</Text>
+          </View>
+          <View style={styles.cardHeaderInfo}>
+            <Text style={styles.username}>
+              {item.username || (esMio ? 'Tú' : 'Usuario')}
+            </Text>
+            <Text style={styles.tiempo}>{tiempoAtras(item.created_at)}</Text>
+          </View>
+          {!esMio && (
+            <TouchableOpacity
+              style={[
+                styles.btnSeguir,
+                siguiendo.includes(item.user_id) && styles.btnSiguiendo,
+              ]}
+              onPress={() => toggleSeguir(item.user_id)}
+            >
+              <Text style={[
+                styles.btnSeguirText,
+                siguiendo.includes(item.user_id) && styles.btnSiguiendoText,
+              ]}>
+                {siguiendo.includes(item.user_id) ? 'Siguiendo' : 'Seguir'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
         {item.imagen_url ? (
           <Image
@@ -319,14 +334,10 @@ export default function Feed() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Text style={styles.logo}>🧥 Xhaba</Text>
-        </View>
-        <View style={{ flexDirection: 'row', gap: 16 }}>
-          <TouchableOpacity onPress={handleLogout}>
-            <Text style={styles.salir}>Salir</Text>
-          </TouchableOpacity>
-        </View>
+        <Text style={styles.logo}>🧥 Xhaba</Text>
+        <TouchableOpacity onPress={handleLogout}>
+          <Text style={styles.salir}>Salir</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.publicar}>
@@ -348,16 +359,16 @@ export default function Feed() {
           />
           <View style={styles.categorias}>
             {['👕 Casual', '🏋️ Deportivo', '👔 Formal', '🌆 Urbano', '🏖️ Playa', '❄️ Invierno', '🎉 Fiesta'].map((cat) => (
-            <TouchableOpacity
-             key={cat}
-            style={[styles.categoriaBtn, categoria === cat && styles.categoriaBtnActivo]}
-              onPress={() => setCategoria(categoria === cat ? '' : cat)}
-            >
-            <Text style={[styles.categoriaBtnText, categoria === cat && styles.categoriaBtnTextoActivo]}>
-             {cat}
-           </Text>
-            </TouchableOpacity>
-             ))}
+              <TouchableOpacity
+                key={cat}
+                style={[styles.categoriaBtn, categoria === cat && styles.categoriaBtnActivo]}
+                onPress={() => setCategoria(categoria === cat ? '' : cat)}
+              >
+                <Text style={[styles.categoriaBtnText, categoria === cat && styles.categoriaBtnTextoActivo]}>
+                  {cat}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
           <TouchableOpacity
             style={[styles.btnPublicar, (!descripcion && !imagen) && styles.btnDesactivado]}
@@ -451,19 +462,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     minHeight: 44,
   },
-     categorias: {
-     flexDirection: 'row',
-     flexWrap: 'wrap',
-     gap: 8,
-     marginTop: 4,
-    },
+  categorias: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
   categoriaBtn: {
     borderWidth: 1,
     borderColor: '#333',
     borderRadius: 20,
     paddingVertical: 6,
     paddingHorizontal: 12,
-    marginRight: 8,
   },
   categoriaBtnActivo: {
     backgroundColor: '#fff',
