@@ -10,7 +10,56 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import Svg, { Line, Path } from 'react-native-svg';
 import { supabase } from '../lib/supabase';
+
+const GOLD = '#c8a96e';
+const BG = '#0f0f0f';
+const CARD_BG = '#111';
+const BORDER = '#1e1e1e';
+
+const CATEGORIA_COLORES: any = {
+  '👕 Casual':     '#0d0d1a',
+  '🏋️ Deportivo': '#0d1a0d',
+  '👔 Formal':     '#12101a',
+  '🌆 Urbano':     '#1a0d0d',
+  '🏖️ Playa':      '#1a180d',
+  '❄️ Invierno':   '#0d161a',
+  '🎉 Fiesta':     '#1a0d18',
+};
+
+function HangerSVG({ size = 24, color = '#c8a96e' }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 3C10.9 3 10 3.9 10 5C10 5.74 10.4 6.38 11 6.73V8L3 14H21L13 8V6.73C13.6 6.38 14 5.74 14 5C14 3.9 13.1 3 12 3Z"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Line x1="3" y1="14" x2="3" y2="16" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      <Line x1="21" y1="14" x2="21" y2="16" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      <Path
+        d="M3 16C3 17 4 18 5 18H19C20 18 21 17 21 16"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+
+function XhabaLogo() {
+  return (
+    <View style={styles.logoContainer}>
+      <HangerSVG size={28} color={GOLD} />
+      <Text style={styles.logoText}>
+        xhab<Text style={{ color: GOLD }}>a</Text>
+      </Text>
+    </View>
+  );
+}
 
 export default function Feed() {
   const [outfits, setOutfits] = useState<any[]>([]);
@@ -25,12 +74,17 @@ export default function Feed() {
   const [nuevoComentario, setNuevoComentario] = useState<any>({});
   const [mostrarComentarios, setMostrarComentarios] = useState<any>({});
   const [categoria, setCategoria] = useState('');
+  const [notifCount] = useState(3);
+  const [mostrarPublicar, setMostrarPublicar] = useState(false);
 
   useEffect(() => {
     cargarUsuario();
     cargarOutfits();
-    cargarSiguiendo();
   }, []);
+
+  useEffect(() => {
+    if (userId) cargarSiguiendo();
+  }, [userId]);
 
   async function cargarUsuario() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -52,25 +106,19 @@ export default function Feed() {
 
       const perfilesMap: any = {};
       if (perfilesData) {
-        perfilesData.forEach((p: any) => {
-          perfilesMap[p.user_id] = p.username;
-        });
+        perfilesData.forEach((p: any) => { perfilesMap[p.user_id] = p.username; });
       }
 
-      const outfitsConNombre = data.map((o: any) => ({
+      setOutfits(data.map((o: any) => ({
         ...o,
         username: perfilesMap[o.user_id] || null,
-      }));
-
-      setOutfits(outfitsConNombre);
+      })));
     }
 
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const { data: likesData } = await supabase
-        .from('likes')
-        .select('outfit_id')
-        .eq('user_id', user.id);
+        .from('likes').select('outfit_id').eq('user_id', user.id);
       if (likesData) setMisLikes(likesData.map((l: any) => l.outfit_id));
     }
     setCargando(false);
@@ -84,9 +132,7 @@ export default function Feed() {
       const file = e.target.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = (ev) => {
-        setImagen(ev.target?.result as string);
-      };
+      reader.onload = (ev) => setImagen(ev.target?.result as string);
       reader.readAsDataURL(file);
     };
     input.click();
@@ -103,12 +149,9 @@ export default function Feed() {
     const byteArray = new Uint8Array(byteNumbers);
     const blob = new Blob([byteArray], { type: 'image/jpeg' });
     const { error } = await supabase.storage
-      .from('outfits')
-      .upload(fileName, blob, { contentType: 'image/jpeg' });
+      .from('outfits').upload(fileName, blob, { contentType: 'image/jpeg' });
     if (error) return null;
-    const { data: urlData } = supabase.storage
-      .from('outfits')
-      .getPublicUrl(fileName);
+    const { data: urlData } = supabase.storage.from('outfits').getPublicUrl(fileName);
     return urlData.publicUrl;
   }
 
@@ -117,62 +160,39 @@ export default function Feed() {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     let imagen_url = null;
-    if (imagen && user) {
-      imagen_url = await subirImagen(imagen, user.id);
-    }
+    if (imagen && user) imagen_url = await subirImagen(imagen, user.id);
     await supabase.from('outfits').insert({
-      user_id: user?.id,
-      descripcion,
-      imagen_url,
-      categoria,
-      likes: 0,
+      user_id: user?.id, descripcion, imagen_url, categoria, likes: 0,
       created_at: new Date().toISOString(),
     });
-    setDescripcion('');
-    setImagen(null);
-    setCategoria('');
+    setDescripcion(''); setImagen(null); setCategoria('');
+    setMostrarPublicar(false);
     await cargarOutfits();
     setLoading(false);
   }
 
   async function darLike(id: number, likesActuales: number) {
-    if (!userId) return;
-    if (misLikes.includes(id)) return;
+    if (!userId || misLikes.includes(id)) return;
     await supabase.from('likes').insert({ user_id: userId, outfit_id: id });
-    await supabase
-      .from('outfits')
-      .update({ likes: likesActuales + 1 })
-      .eq('id', id);
+    await supabase.from('outfits').update({ likes: likesActuales + 1 }).eq('id', id);
     cargarOutfits();
   }
 
   async function cargarComentarios(outfitId: number) {
     const { data } = await supabase
-      .from('comentarios')
-      .select('*')
-      .eq('outfit_id', outfitId)
+      .from('comentarios').select('*').eq('outfit_id', outfitId)
       .order('created_at', { ascending: true });
 
     if (data) {
       const perfilesIds = [...new Set(data.map((c: any) => c.user_id))];
       const { data: perfilesData } = await supabase
-        .from('perfiles')
-        .select('user_id, username')
-        .in('user_id', perfilesIds);
-
+        .from('perfiles').select('user_id, username').in('user_id', perfilesIds);
       const perfilesMap: any = {};
-      if (perfilesData) {
-        perfilesData.forEach((p: any) => {
-          perfilesMap[p.user_id] = p.username;
-        });
-      }
-
-      const comentariosConNombre = data.map((c: any) => ({
-        ...c,
-        username: perfilesMap[c.user_id] || 'Usuario',
+      if (perfilesData) perfilesData.forEach((p: any) => { perfilesMap[p.user_id] = p.username; });
+      setComentarios((prev: any) => ({
+        ...prev,
+        [outfitId]: data.map((c: any) => ({ ...c, username: perfilesMap[c.user_id] || 'Usuario' }))
       }));
-
-      setComentarios((prev: any) => ({ ...prev, [outfitId]: comentariosConNombre }));
     }
   }
 
@@ -180,10 +200,7 @@ export default function Feed() {
     const texto = nuevoComentario[outfitId];
     if (!texto) return;
     await supabase.from('comentarios').insert({
-      user_id: userId,
-      outfit_id: outfitId,
-      texto,
-      created_at: new Date().toISOString(),
+      user_id: userId, outfit_id: outfitId, texto, created_at: new Date().toISOString(),
     });
     setNuevoComentario((prev: any) => ({ ...prev, [outfitId]: '' }));
     cargarComentarios(outfitId);
@@ -192,136 +209,143 @@ export default function Feed() {
   async function cargarSiguiendo() {
     if (!userId) return;
     const { data } = await supabase
-      .from('seguidores')
-      .select('following_id')
-      .eq('follower_id', userId);
+      .from('seguidores').select('following_id').eq('follower_id', userId);
     if (data) setSiguiendo(data.map((s: any) => s.following_id));
   }
 
   async function toggleSeguir(otherUserId: string) {
     if (!userId) return;
     if (siguiendo.includes(otherUserId)) {
-      await supabase
-        .from('seguidores')
-        .delete()
-        .eq('follower_id', userId)
-        .eq('following_id', otherUserId);
+      await supabase.from('seguidores').delete()
+        .eq('follower_id', userId).eq('following_id', otherUserId);
       setSiguiendo(siguiendo.filter((id) => id !== otherUserId));
     } else {
-      await supabase
-        .from('seguidores')
-        .insert({ follower_id: userId, following_id: otherUserId });
+      await supabase.from('seguidores').insert({ follower_id: userId, following_id: otherUserId });
       setSiguiendo([...siguiendo, otherUserId]);
     }
   }
 
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    router.replace('/');
-  }
-
   function tiempoAtras(fecha: string) {
-    const ahora = new Date();
-    const creado = new Date(fecha);
-    const diff = Math.floor((ahora.getTime() - creado.getTime()) / 1000);
+    const diff = Math.floor((Date.now() - new Date(fecha).getTime()) / 1000);
     if (diff < 60) return 'ahora';
     if (diff < 3600) return `${Math.floor(diff / 60)}m`;
     if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
     return `${Math.floor(diff / 86400)}d`;
   }
 
+  function irAPerfil(otroUserId: string, esMio: boolean) {
+    if (esMio) {
+      router.replace('/perfil');
+    } else {
+      router.push({ pathname: '/[id]', params: { id: otroUserId } });
+    }
+  }
+
   function renderOutfit({ item }: any) {
     const esMio = item.user_id === userId;
+    const cardColor = CATEGORIA_COLORES[item.categoria] || CARD_BG;
+    const yaLike = misLikes.includes(item.id);
+
     return (
-      <View style={styles.card}>
+      <View style={[styles.card, { backgroundColor: cardColor }]}>
         <View style={styles.cardHeader}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>👤</Text>
-          </View>
+          <TouchableOpacity
+            style={styles.avatarWrap}
+            onPress={() => irAPerfil(item.user_id, esMio)}
+          >
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>
+                {(item.username || 'U')[0].toUpperCase()}
+              </Text>
+            </View>
+            <View style={styles.onlineDot} />
+          </TouchableOpacity>
+
           <View style={styles.cardHeaderInfo}>
-            <TouchableOpacity
-              onPress={() => esMio
-                ? router.replace('/perfil')
-                : router.push(`/${item.user_id}` as any)
-              }
-            >
+            <TouchableOpacity onPress={() => irAPerfil(item.user_id, esMio)}>
               <Text style={styles.username}>
                 {item.username || (esMio ? 'Tú' : 'Usuario')}
               </Text>
             </TouchableOpacity>
-            <Text style={styles.tiempo}>{tiempoAtras(item.created_at)}</Text>
+            <View style={styles.metaRow}>
+              {item.categoria
+                ? <Text style={styles.categoriaInline}>{item.categoria}</Text>
+                : null}
+              <Text style={styles.tiempo}>{tiempoAtras(item.created_at)}</Text>
+            </View>
           </View>
+
           {!esMio && (
             <TouchableOpacity
-              style={[
-                styles.btnSeguir,
-                siguiendo.includes(item.user_id) && styles.btnSiguiendo,
-              ]}
+              style={[styles.btnSeguir, siguiendo.includes(item.user_id) && styles.btnSiguiendo]}
               onPress={() => toggleSeguir(item.user_id)}
             >
-              <Text style={[
-                styles.btnSeguirText,
-                siguiendo.includes(item.user_id) && styles.btnSiguiendoText,
-              ]}>
-                {siguiendo.includes(item.user_id) ? 'Siguiendo' : 'Seguir'}
+              <Text style={[styles.btnSeguirText, siguiendo.includes(item.user_id) && styles.btnSiguiendoText]}>
+                {siguiendo.includes(item.user_id) ? '✓ siguiendo' : '+ seguir'}
               </Text>
             </TouchableOpacity>
           )}
         </View>
 
+        {item.descripcion ? (
+          <Text style={styles.descripcion}>
+            <Text style={styles.usernameInline}>{item.username} </Text>
+            {item.descripcion}
+          </Text>
+        ) : null}
+
         {item.imagen_url ? (
-          <Image
-            source={{ uri: item.imagen_url }}
-            style={styles.imagen}
-            resizeMode="contain"
+          <img
+            src={item.imagen_url}
+            style={{ width: '100%', height: 500, objectFit: 'contain', display: 'block', backgroundColor: '#000' }}
           />
         ) : null}
 
         <View style={styles.cardFooter}>
           <View style={styles.acciones}>
             <TouchableOpacity
-              style={styles.likeBtn}
+              style={styles.accionBtn}
               onPress={() => darLike(item.id, item.likes || 0)}
-              disabled={misLikes.includes(item.id)}
+              disabled={yaLike}
             >
-              <Text style={styles.likeText}>
-                {misLikes.includes(item.id) ? '❤️' : '🤍'} {item.likes || 0}
+              <Text style={[styles.accionIcon, yaLike && styles.accionIconActivo]}>
+                {yaLike ? '♥' : '♡'}
+              </Text>
+              <Text style={[styles.accionNum, yaLike && { color: GOLD }]}>
+                {item.likes || 0}
               </Text>
             </TouchableOpacity>
+
             <TouchableOpacity
+              style={styles.accionBtn}
               onPress={() => {
                 const showing = !mostrarComentarios[item.id];
                 setMostrarComentarios((prev: any) => ({ ...prev, [item.id]: showing }));
                 if (showing) cargarComentarios(item.id);
               }}
             >
-              <Text style={styles.btnComentario}>
-                💬 {comentarios[item.id]?.length || 0}
-              </Text>
+              <Text style={styles.accionIcon}>◎</Text>
+              <Text style={styles.accionNum}>{comentarios[item.id]?.length || 0}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.accionBtn}>
+              <Text style={styles.accionIcon}>↗</Text>
             </TouchableOpacity>
           </View>
-
-          {item.categoria ? (
-            <Text style={styles.categoriaTag}>{item.categoria}</Text>
-          ) : null}
-
-          {item.descripcion ? (
-            <Text style={styles.descripcion}>{item.descripcion}</Text>
-          ) : null}
 
           {mostrarComentarios[item.id] && (
             <View style={styles.comentariosContainer}>
               {(comentarios[item.id] || []).map((c: any) => (
                 <View key={c.id} style={styles.comentario}>
                   <Text style={styles.comentarioUser}>{c.username}</Text>
-                  <Text style={styles.comentarioTexto}>{c.texto}</Text>
+                  <Text style={styles.comentarioTexto}> {c.texto}</Text>
                 </View>
               ))}
               <View style={styles.inputComentario}>
                 <TextInput
                   style={styles.inputComentarioTexto}
-                  placeholder="Escribe un comentario..."
-                  placeholderTextColor="#666"
+                  placeholder="añadir comentario..."
+                  placeholderTextColor="#333"
                   value={nuevoComentario[item.id] || ''}
                   onChangeText={(text) =>
                     setNuevoComentario((prev: any) => ({ ...prev, [item.id]: text }))
@@ -340,67 +364,107 @@ export default function Feed() {
 
   return (
     <View style={styles.container}>
+      {/* HEADER FIJO */}
       <View style={styles.header}>
-        <Text style={styles.logo}>🧥 Xhaba</Text>
-        <TouchableOpacity onPress={handleLogout}>
-          <Text style={styles.salir}>Salir</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.publicar}>
-        <TouchableOpacity style={styles.btnFoto} onPress={seleccionarImagen}>
-          {imagen ? (
-            <Image source={{ uri: imagen }} style={styles.preview} />
-          ) : (
-            <Text style={styles.btnFotoText}>📸</Text>
-          )}
-        </TouchableOpacity>
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.input}
-            placeholder="¿Qué outfit usas hoy?"
-            placeholderTextColor="#666"
-            value={descripcion}
-            onChangeText={setDescripcion}
-            multiline
-          />
-          <View style={styles.categorias}>
-            {['👕 Casual', '🏋️ Deportivo', '👔 Formal', '🌆 Urbano', '🏖️ Playa', '❄️ Invierno', '🎉 Fiesta'].map((cat) => (
-              <TouchableOpacity
-                key={cat}
-                style={[styles.categoriaBtn, categoria === cat && styles.categoriaBtnActivo]}
-                onPress={() => setCategoria(categoria === cat ? '' : cat)}
-              >
-                <Text style={[styles.categoriaBtnText, categoria === cat && styles.categoriaBtnTextoActivo]}>
-                  {cat}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+        <XhabaLogo />
+        <View style={styles.headerActions}>
+          {/* Botón publicar compacto */}
           <TouchableOpacity
-            style={[styles.btnPublicar, (!descripcion && !imagen) && styles.btnDesactivado]}
-            onPress={publicar}
-            disabled={loading || (!descripcion && !imagen)}
+            style={styles.btnPublicarHeader}
+            onPress={() => setMostrarPublicar(!mostrarPublicar)}
           >
-            {loading ? (
-              <ActivityIndicator color="#000" />
-            ) : (
-              <Text style={styles.btnPublicarText}>Publicar</Text>
+            <Text style={styles.btnPublicarHeaderText}>+ outfit</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.headerBtn}
+            onPress={() => router.push('/notificaciones' as any)}
+          >
+            <Text style={styles.headerBtnIcon}>🔔</Text>
+            {notifCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{notifCount}</Text>
+              </View>
             )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.headerBtn}
+            onPress={() => router.replace('/mensajes')}
+          >
+            <Text style={styles.headerBtnIcon}>✉</Text>
           </TouchableOpacity>
         </View>
       </View>
 
+      {/* PUBLICAR — se despliega solo cuando se toca "+ outfit" */}
+      {mostrarPublicar && (
+        <View style={styles.publicar}>
+          <TouchableOpacity style={styles.btnFoto} onPress={seleccionarImagen}>
+            {imagen ? (
+              <Image source={{ uri: imagen }} style={styles.preview} resizeMode="cover" />
+            ) : (
+              <Text style={styles.btnFotoText}>+</Text>
+            )}
+          </TouchableOpacity>
+
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={styles.input}
+              placeholder="¿qué outfit usas hoy?"
+              placeholderTextColor="#2e2e2e"
+              value={descripcion}
+              onChangeText={setDescripcion}
+              multiline
+              autoFocus
+            />
+            <View style={styles.categorias}>
+              {['👕 Casual', '🏋️ Deportivo', '👔 Formal', '🌆 Urbano', '🏖️ Playa', '❄️ Invierno', '🎉 Fiesta'].map((cat) => (
+                <TouchableOpacity
+                  key={cat}
+                  style={[styles.categoriaBtn, categoria === cat && styles.categoriaBtnActivo]}
+                  onPress={() => setCategoria(categoria === cat ? '' : cat)}
+                >
+                  <Text style={[styles.categoriaBtnText, categoria === cat && styles.categoriaBtnTextoActivo]}>
+                    {cat}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.publicarRow}>
+              <TouchableOpacity onPress={() => setMostrarPublicar(false)}>
+                <Text style={styles.btnCancelar}>cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.btnPublicar, (!descripcion && !imagen) && styles.btnDesactivado]}
+                onPress={publicar}
+                disabled={loading || (!descripcion && !imagen)}
+              >
+                {loading
+                  ? <ActivityIndicator color="#000" size="small" />
+                  : <Text style={styles.btnPublicarText}>publicar</Text>
+                }
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* FEED */}
       {cargando ? (
-        <ActivityIndicator color="#fff" style={{ marginTop: 40 }} />
+        <ActivityIndicator color={GOLD} style={{ marginTop: 60 }} />
       ) : outfits.length === 0 ? (
-        <Text style={styles.vacio}>Sé el primero en publicar un outfit 👕</Text>
+        <View style={styles.vacioCont}>
+          <Text style={styles.vacio}>sé el primero en publicar un outfit</Text>
+        </View>
       ) : (
         <FlatList
           data={outfits}
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderOutfit}
-          contentContainerStyle={{ paddingBottom: 40 }}
+          contentContainerStyle={{ paddingBottom: 20 }}
+          showsVerticalScrollIndicator={false}
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
         />
       )}
     </View>
@@ -408,239 +472,217 @@ export default function Feed() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000000',
-  },
+  container:       { flex: 1, backgroundColor: BG },
+
+  // HEADER
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    flexDirection:   'row',
+    justifyContent:  'space-between',
+    alignItems:      'center',
+    paddingHorizontal: 16,
+    paddingTop:      52,
+    paddingBottom:   12,
+    backgroundColor: BG,
     borderBottomWidth: 1,
-    borderBottomColor: '#1a1a1a',
+    borderBottomColor: BORDER,
   },
-  logo: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    letterSpacing: 2,
+  logoContainer:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  logoText: {
+    fontSize:        22,
+    fontWeight:      '800',
+    color:           '#fff',
+    letterSpacing:   2,
+    fontStyle:       'italic',
   },
-  salir: {
-    color: '#555',
-    fontSize: 14,
+  headerActions:   { flexDirection: 'row', gap: 6, alignItems: 'center' },
+  btnPublicarHeader: {
+    backgroundColor: GOLD,
+    borderRadius:    20,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
   },
+  btnPublicarHeaderText: {
+    color:           '#000',
+    fontWeight:      '700',
+    fontSize:        12,
+    letterSpacing:   0.5,
+  },
+  headerBtn: {
+    width:           36,
+    height:          36,
+    borderRadius:    18,
+    backgroundColor: '#161616',
+    borderWidth:     1,
+    borderColor:     BORDER,
+    justifyContent:  'center',
+    alignItems:      'center',
+  },
+  headerBtnIcon:   { fontSize: 15 },
+  badge: {
+    position:        'absolute',
+    top:             -2,
+    right:           -2,
+    backgroundColor: GOLD,
+    borderRadius:    8,
+    minWidth:        16,
+    height:          16,
+    justifyContent:  'center',
+    alignItems:      'center',
+    paddingHorizontal: 3,
+  },
+  badgeText:       { color: '#000', fontSize: 9, fontWeight: 'bold' },
+
+  // PUBLICAR
   publicar: {
-    padding: 16,
+    padding:         16,
     borderBottomWidth: 1,
-    borderBottomColor: '#1a1a1a',
-    flexDirection: 'row',
-    gap: 12,
+    borderBottomColor: BORDER,
+    flexDirection:   'row',
+    gap:             12,
+    backgroundColor: '#0a0a0a',
   },
   btnFoto: {
-    width: 56,
-    height: 56,
-    backgroundColor: '#111',
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: '#333',
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
+    width:           48,
+    height:          48,
+    backgroundColor: '#161616',
+    borderRadius:    24,
+    borderWidth:     1,
+    borderColor:     GOLD,
+    justifyContent:  'center',
+    alignItems:      'center',
+    overflow:        'hidden',
   },
-  btnFotoText: {
-    fontSize: 20,
-  },
-  preview: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-  },
-  inputContainer: {
-    flex: 1,
-    gap: 8,
-  },
+  btnFotoText:     { fontSize: 22, color: GOLD },
+  preview:         { width: 48, height: 48 },
+  inputContainer:  { flex: 1, gap: 10 },
   input: {
-    backgroundColor: '#000',
-    borderWidth: 0,
-    padding: 8,
-    color: '#fff',
-    fontSize: 16,
-    minHeight: 44,
-  },
-  categorias: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 4,
-  },
-  categoriaBtn: {
-    borderWidth: 1,
-    borderColor: '#333',
-    borderRadius: 20,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  categoriaBtnActivo: {
-    backgroundColor: '#fff',
-    borderColor: '#fff',
-  },
-  categoriaBtnText: {
-    color: '#666',
-    fontSize: 12,
-  },
-  categoriaBtnTextoActivo: {
-    color: '#000',
-    fontWeight: 'bold',
-  },
-  categoriaTag: {
-    color: '#888',
-    fontSize: 12,
-    marginTop: 4,
-  },
-  btnPublicar: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-    alignSelf: 'flex-end',
-  },
-  btnDesactivado: {
-    backgroundColor: '#333',
-  },
-  btnPublicarText: {
-    color: '#000',
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  card: {
+    color:           '#fff',
+    fontSize:        14,
+    paddingVertical: 4,
+    minHeight:       36,
     borderBottomWidth: 1,
-    borderBottomColor: '#1a1a1a',
-    paddingVertical: 12,
+    borderBottomColor: BORDER,
   },
+  categorias:      { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  categoriaBtn: {
+    borderWidth:     1,
+    borderColor:     '#1e1e1e',
+    borderRadius:    20,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+  },
+  categoriaBtnActivo: { backgroundColor: GOLD, borderColor: GOLD },
+  categoriaBtnText:        { color: '#3a3a3a', fontSize: 11 },
+  categoriaBtnTextoActivo: { color: '#000', fontWeight: 'bold' },
+  publicarRow: {
+    flexDirection:   'row',
+    justifyContent:  'space-between',
+    alignItems:      'center',
+  },
+  btnCancelar:     { color: '#333', fontSize: 13 },
+  btnPublicar: {
+    backgroundColor: GOLD,
+    borderRadius:    20,
+    paddingVertical: 8,
+    paddingHorizontal: 22,
+  },
+  btnDesactivado:  { backgroundColor: '#161616' },
+  btnPublicarText: { color: '#000', fontWeight: '700', fontSize: 13, letterSpacing: 0.8 },
+
+  // CARDS
+  separator:       { height: 1, backgroundColor: BORDER },
+  card:            { backgroundColor: CARD_BG },
   cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection:   'row',
+    alignItems:      'center',
     paddingHorizontal: 16,
-    marginBottom: 12,
-    gap: 10,
+    paddingVertical: 12,
+    gap:             10,
   },
+  avatarWrap:      { position: 'relative' },
   avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#222',
-    justifyContent: 'center',
-    alignItems: 'center',
+    width:           36,
+    height:          36,
+    borderRadius:    18,
+    backgroundColor: '#1a1a1a',
+    borderWidth:     1.5,
+    borderColor:     GOLD,
+    justifyContent:  'center',
+    alignItems:      'center',
   },
-  avatarText: {
-    fontSize: 18,
+  avatarText:      { color: GOLD, fontWeight: 'bold', fontSize: 14 },
+  onlineDot: {
+    position:        'absolute',
+    bottom:          0,
+    right:           0,
+    width:           9,
+    height:          9,
+    borderRadius:    5,
+    backgroundColor: '#4caf50',
+    borderWidth:     1.5,
+    borderColor:     BG,
   },
-  cardHeaderInfo: {
-    flex: 1,
+  cardHeaderInfo:  { flex: 1 },
+  username:        { color: '#fff', fontWeight: '700', fontSize: 13, letterSpacing: 0.3 },
+  metaRow:         { flexDirection: 'row', gap: 6, alignItems: 'center', marginTop: 2 },
+  categoriaInline: { color: GOLD, fontSize: 10, opacity: 0.7 },
+  tiempo:          { color: '#2e2e2e', fontSize: 10 },
+  btnSeguir: {
+    borderWidth:     1,
+    borderColor:     '#2a2a2a',
+    borderRadius:    20,
+    paddingVertical: 5,
+    paddingHorizontal: 14,
   },
-  username: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  tiempo: {
-    color: '#555',
-    fontSize: 12,
-  },
-  imagen: {
-    width: '100%',
-    height: 400,
-    marginBottom: 8,
-  },
+  btnSiguiendo:    { backgroundColor: 'rgba(200,169,110,0.1)', borderColor: GOLD },
+  btnSeguirText:   { color: '#555', fontSize: 11, fontWeight: '600', letterSpacing: 0.3 },
+  btnSiguiendoText: { color: GOLD },
   cardFooter: {
     paddingHorizontal: 16,
-    gap: 6,
-  },
-  likeBtn: {
-    alignSelf: 'flex-start',
-  },
-  likeText: {
-    fontSize: 16,
+    paddingTop:      10,
+    paddingBottom:   14,
+    gap:             10,
   },
   descripcion: {
-    color: '#ccc',
-    fontSize: 14,
-    lineHeight: 20,
+    color:           '#666',
+    fontSize:        13,
+    lineHeight:      19,
+    paddingHorizontal: 16,
+    paddingBottom:   8,
   },
-  vacio: {
-    color: '#555',
-    textAlign: 'center',
-    marginTop: 60,
-    fontSize: 16,
+  usernameInline:  { color: '#ccc', fontWeight: '700' },
+  acciones:        { flexDirection: 'row', gap: 22, alignItems: 'center' },
+  accionBtn:       { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  accionIcon:      { fontSize: 19, color: '#333' },
+  accionIconActivo: { color: GOLD },
+  accionNum:       { color: '#333', fontSize: 13, fontWeight: '600' },
+  vacioCont: {
+    flex:            1,
+    justifyContent:  'center',
+    alignItems:      'center',
+    opacity:         0.4,
   },
-  acciones: {
-    flexDirection: 'row',
-    gap: 16,
-    alignItems: 'center',
-  },
-  btnComentario: {
-    fontSize: 16,
-    color: '#fff',
-  },
+  vacio:           { color: '#555', fontSize: 14, letterSpacing: 0.5 },
   comentariosContainer: {
-    marginTop: 12,
-    gap: 8,
+    gap:             8,
+    paddingTop:      10,
+    borderTopWidth:  1,
+    borderTopColor:  BORDER,
   },
-  comentario: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'flex-start',
-  },
-  comentarioUser: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 13,
-  },
-  comentarioTexto: {
-    color: '#ccc',
-    fontSize: 13,
-    flex: 1,
-  },
-  inputComentario: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 8,
-  },
+  comentario:      { flexDirection: 'row', gap: 4 },
+  comentarioUser:  { color: '#888', fontWeight: '700', fontSize: 12 },
+  comentarioTexto: { color: '#555', fontSize: 12, flex: 1 },
+  inputComentario: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
   inputComentarioTexto: {
-    flex: 1,
-    backgroundColor: '#111',
-    borderWidth: 1,
-    borderColor: '#333',
-    borderRadius: 20,
+    flex:            1,
+    backgroundColor: '#0d0d0d',
+    borderWidth:     1,
+    borderColor:     BORDER,
+    borderRadius:    20,
     paddingHorizontal: 14,
     paddingVertical: 8,
-    color: '#fff',
-    fontSize: 13,
+    color:           '#fff',
+    fontSize:        12,
   },
-  btnEnviar: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  btnSeguir: {
-    borderWidth: 1,
-    borderColor: '#fff',
-    borderRadius: 20,
-    paddingVertical: 4,
-    paddingHorizontal: 14,
-  },
-  btnSiguiendo: {
-    backgroundColor: '#fff',
-  },
-  btnSeguirText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  btnSiguiendoText: {
-    color: '#000',
-  },
+  btnEnviar:       { color: GOLD, fontSize: 18 },
 });

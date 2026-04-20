@@ -1,9 +1,30 @@
 import { router, Slot, usePathname } from 'expo-router';
+import { useEffect } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+
+const GOLD = '#c8a96e';
+const BG = '#0f0f0f';
+
+const NAV_ITEMS = [
+  { route: '/feed',     icon: '⌂', label: 'Feed'     },
+  { route: '/buscar',   icon: '⊹', label: 'Buscar'   },
+  { route: '/battle',   icon: '⚡', label: 'Battles'  },
+  { route: '/mensajes', icon: '✉', label: 'Mensajes' },
+  { route: '/perfil',   icon: '◉', label: 'Perfil'   },
+];
 
 export default function RootLayout() {
   const pathname = usePathname();
-  const showNav = ['/feed', '/perfil', '/battle', '/buscar'].includes(pathname);
+  const showNav = NAV_ITEMS.map(i => i.route).includes(pathname);
+
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = `
+      * { scrollbar-width: none !important; }
+      *::-webkit-scrollbar { display: none !important; }
+    `;
+    document.head.appendChild(style);
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -13,37 +34,25 @@ export default function RootLayout() {
 
       {showNav && (
         <View style={styles.navbar}>
-          <TouchableOpacity
-            style={styles.navItem}
-            onPress={() => router.replace('/feed')}
-          >
-            <Text style={[styles.navIcon, pathname === '/feed' && styles.navActivo]}>🏠</Text>
-            <Text style={[styles.navLabel, pathname === '/feed' && styles.navLabelActivo]}>Feed</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.navItem}
-            onPress={() => router.replace('/buscar')}
-          >
-            <Text style={[styles.navIcon, pathname === '/buscar' && styles.navActivo]}>🔍</Text>
-            <Text style={[styles.navLabel, pathname === '/buscar' && styles.navLabelActivo]}>Buscar</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.navItem}
-            onPress={() => router.replace('/battle')}
-          >
-            <Text style={[styles.navIcon, pathname === '/battle' && styles.navActivo]}>⚔️</Text>
-            <Text style={[styles.navLabel, pathname === '/battle' && styles.navLabelActivo]}>Battles</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.navItem}
-            onPress={() => router.replace('/perfil')}
-          >
-            <Text style={[styles.navIcon, pathname === '/perfil' && styles.navActivo]}>👤</Text>
-            <Text style={[styles.navLabel, pathname === '/perfil' && styles.navLabelActivo]}>Perfil</Text>
-          </TouchableOpacity>
+          {NAV_ITEMS.map(({ route, icon, label }) => {
+            const activo = pathname === route;
+            return (
+              <TouchableOpacity
+                key={route}
+                style={styles.navItem}
+                onPress={() => router.replace(route as any)}
+              >
+                <View style={[styles.iconWrapper, activo && styles.iconWrapperActivo]}>
+                  <Text style={[styles.navIcon, activo && styles.navIconActivo]}>
+                    {icon}
+                  </Text>
+                </View>
+                <Text style={[styles.navLabel, activo && styles.navLabelActivo]}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       )}
     </View>
@@ -51,38 +60,45 @@ export default function RootLayout() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
-  content: {
-    flex: 1,
-  },
+  container:         { flex: 1, backgroundColor: BG },
+  content:           { flex: 1 },
   navbar: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: '#1a1a1a',
-    backgroundColor: '#000',
-    paddingVertical: 8,
-    paddingBottom: 16,
+    flexDirection:   'row',
+    borderTopWidth:  1,
+    borderTopColor:  '#1e1e1e',
+    backgroundColor: '#0a0a0a',
+    paddingTop:      10,
+    paddingBottom:   24,
   },
   navItem: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 4,
+    flex:            1,
+    alignItems:      'center',
+    gap:             4,
+  },
+  iconWrapper: {
+    width:           36,
+    height:          36,
+    borderRadius:    18,
+    justifyContent:  'center',
+    alignItems:      'center',
+  },
+  iconWrapperActivo: {
+    backgroundColor: 'rgba(200,169,110,0.12)',
   },
   navIcon: {
-    fontSize: 22,
-    opacity: 0.4,
+    fontSize:        20,
+    color:           '#333',
+  },
+  navIconActivo: {
+    color:           GOLD,
   },
   navLabel: {
-    fontSize: 11,
-    color: '#555',
-  },
-  navActivo: {
-    opacity: 1,
+    fontSize:        10,
+    color:           '#333',
+    letterSpacing:   0.5,
   },
   navLabelActivo: {
-    color: '#fff',
+    color:           GOLD,
+    fontWeight:      '600',
   },
 });
