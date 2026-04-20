@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -37,7 +38,13 @@ export default function Buscar() {
 
   function renderUsuario({ item }: any) {
     return (
-      <TouchableOpacity style={styles.usuario}>
+      <TouchableOpacity
+        style={styles.usuario}
+        onPress={() => router.push({
+          pathname: '/mensajes',
+          params: { userId: item.user_id, username: item.username }
+        })}
+      >
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>👤</Text>
         </View>
@@ -47,6 +54,7 @@ export default function Buscar() {
             <Text style={styles.bio}>{item.bio}</Text>
           ) : null}
         </View>
+        <Text style={styles.btnMsg}>💬</Text>
       </TouchableOpacity>
     );
   }
@@ -182,6 +190,10 @@ const styles = StyleSheet.create({
     color: '#666',
     fontSize: 13,
     marginTop: 2,
+  },
+  btnMsg: {
+    fontSize: 20,
+    paddingLeft: 8,
   },
   vacio: {
     color: '#555',

@@ -239,9 +239,16 @@ export default function Feed() {
             <Text style={styles.avatarText}>👤</Text>
           </View>
           <View style={styles.cardHeaderInfo}>
-            <Text style={styles.username}>
-              {item.username || (esMio ? 'Tú' : 'Usuario')}
-            </Text>
+            <TouchableOpacity
+              onPress={() => esMio
+                ? router.replace('/perfil')
+                : router.push(`/${item.user_id}` as any)
+              }
+            >
+              <Text style={styles.username}>
+                {item.username || (esMio ? 'Tú' : 'Usuario')}
+              </Text>
+            </TouchableOpacity>
             <Text style={styles.tiempo}>{tiempoAtras(item.created_at)}</Text>
           </View>
           {!esMio && (
