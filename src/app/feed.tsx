@@ -1,9 +1,11 @@
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
   Image,
+  Modal,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -31,21 +33,10 @@ const CATEGORIA_COLORES: any = {
 function HangerSVG({ size = 24, color = '#c8a96e' }: { size?: number; color?: string }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M12 3C10.9 3 10 3.9 10 5C10 5.74 10.4 6.38 11 6.73V8L3 14H21L13 8V6.73C13.6 6.38 14 5.74 14 5C14 3.9 13.1 3 12 3Z"
-        stroke={color}
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <Path d="M12 3C10.9 3 10 3.9 10 5C10 5.74 10.4 6.38 11 6.73V8L3 14H21L13 8V6.73C13.6 6.38 14 5.74 14 5C14 3.9 13.1 3 12 3Z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       <Line x1="3" y1="14" x2="3" y2="16" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
       <Line x1="21" y1="14" x2="21" y2="16" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-      <Path
-        d="M3 16C3 17 4 18 5 18H19C20 18 21 17 21 16"
-        stroke={color}
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
+      <Path d="M3 16C3 17 4 18 5 18H19C20 18 21 17 21 16" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
     </Svg>
   );
 }
@@ -54,20 +45,24 @@ function XhabaLogo() {
   return (
     <View style={styles.logoContainer}>
       <HangerSVG size={28} color={GOLD} />
-      <Text style={styles.logoText}>
-        xhab<Text style={{ color: GOLD }}>a</Text>
-      </Text>
+      <Text style={styles.logoText}>xhab<Text style={{ color: GOLD }}>a</Text></Text>
     </View>
   );
 }
 
 export default function Feed() {
   const [outfits, setOutfits] = useState<any[]>([]);
+  const [historias, setHistorias] = useState<any[]>([]);
+  const [historiaActiva, setHistoriaActiva] = useState<any>(null);
+  const [historiaLikes, setHistoriaLikes] = useState<any[]>([]);
+  const [historiaComentarios, setHistoriaComentarios] = useState<any[]>([]);
+  const [historiaComentario, setHistoriaComentario] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [imagen, setImagen] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
+  const [username, setUsername] = useState<string | null>(null);
   const [misLikes, setMisLikes] = useState<number[]>([]);
   const [comentarios, setComentarios] = useState<any>({});
   const [siguiendo, setSiguiendo] = useState<string[]>([]);
@@ -76,10 +71,12 @@ export default function Feed() {
   const [categoria, setCategoria] = useState('');
   const [notifCount] = useState(3);
   const [mostrarPublicar, setMostrarPublicar] = useState(false);
+  const historiaTimer = useRef<any>(null);
 
   useEffect(() => {
     cargarUsuario();
     cargarOutfits();
+    cargarHistorias();
   }, []);
 
   useEffect(() => {
@@ -88,31 +85,50 @@ export default function Feed() {
 
   async function cargarUsuario() {
     const { data: { user } } = await supabase.auth.getUser();
-    if (user) setUserId(user.id);
+    if (user) {
+      setUserId(user.id);
+      const { data: perfil } = await supabase
+        .from('perfiles').select('username').eq('user_id', user.id).single();
+      if (perfil) setUsername(perfil.username);
+    }
+  }
+
+  async function cargarHistorias() {
+    const { data } = await supabase
+      .from('historias')
+      .select('*')
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false });
+
+    if (data) {
+      const userIds = [...new Set(data.map((h: any) => h.user_id))];
+      const { data: perfiles } = await supabase
+        .from('perfiles').select('user_id, username').in('user_id', userIds);
+      const perfilesMap: any = {};
+      if (perfiles) perfiles.forEach((p: any) => { perfilesMap[p.user_id] = p.username; });
+
+      // Agrupar por usuario
+      const grupos: any = {};
+      data.forEach((h: any) => {
+        if (!grupos[h.user_id]) grupos[h.user_id] = [];
+        grupos[h.user_id].push({ ...h, username: perfilesMap[h.user_id] || 'Usuario' });
+      });
+
+      setHistorias(Object.values(grupos));
+    }
   }
 
   async function cargarOutfits() {
     const { data } = await supabase
-      .from('outfits')
-      .select('*')
-      .order('created_at', { ascending: false });
+      .from('outfits').select('*').order('created_at', { ascending: false });
 
     if (data) {
       const userIds = [...new Set(data.map((o: any) => o.user_id))];
       const { data: perfilesData } = await supabase
-        .from('perfiles')
-        .select('user_id, username')
-        .in('user_id', userIds);
-
+        .from('perfiles').select('user_id, username').in('user_id', userIds);
       const perfilesMap: any = {};
-      if (perfilesData) {
-        perfilesData.forEach((p: any) => { perfilesMap[p.user_id] = p.username; });
-      }
-
-      setOutfits(data.map((o: any) => ({
-        ...o,
-        username: perfilesMap[o.user_id] || null,
-      })));
+      if (perfilesData) perfilesData.forEach((p: any) => { perfilesMap[p.user_id] = p.username; });
+      setOutfits(data.map((o: any) => ({ ...o, username: perfilesMap[o.user_id] || null })));
     }
 
     const { data: { user } } = await supabase.auth.getUser();
@@ -138,20 +154,17 @@ export default function Feed() {
     input.click();
   }
 
-  async function subirImagen(uri: string, uid: string) {
+  async function subirImagen(uri: string, uid: string, bucket = 'outfits') {
     const fileName = `${uid}/${Date.now()}.jpg`;
     const base64 = uri.split(',')[1];
     const byteCharacters = atob(base64);
     const byteNumbers = new Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-      byteNumbers[i] = byteCharacters.charCodeAt(i);
-    }
+    for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
     const byteArray = new Uint8Array(byteNumbers);
     const blob = new Blob([byteArray], { type: 'image/jpeg' });
-    const { error } = await supabase.storage
-      .from('outfits').upload(fileName, blob, { contentType: 'image/jpeg' });
+    const { error } = await supabase.storage.from(bucket).upload(fileName, blob, { contentType: 'image/jpeg' });
     if (error) return null;
-    const { data: urlData } = supabase.storage.from('outfits').getPublicUrl(fileName);
+    const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(fileName);
     return urlData.publicUrl;
   }
 
@@ -171,6 +184,97 @@ export default function Feed() {
     setLoading(false);
   }
 
+  async function publicarHistoria() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async (e: any) => {
+      const file = e.target.files[0];
+      if (!file || !userId) return;
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        const uri = ev.target?.result as string;
+        const imagen_url = await subirImagen(uri, userId, 'outfits');
+        if (!imagen_url) return;
+        await supabase.from('historias').insert({
+          user_id: userId,
+          imagen_url,
+          expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        });
+        cargarHistorias();
+      };
+      reader.readAsDataURL(file);
+    };
+    input.click();
+  }
+
+  async function abrirHistoria(grupo: any[]) {
+    setHistoriaActiva({ historias: grupo, index: 0 });
+    cargarHistoriaData(grupo[0].id);
+    // Auto avanzar cada 5 segundos
+    historiaTimer.current = setTimeout(() => avanzarHistoria(grupo, 0), 5000);
+  }
+
+  function avanzarHistoria(grupo: any[], index: number) {
+    clearTimeout(historiaTimer.current);
+    if (index + 1 < grupo.length) {
+      setHistoriaActiva({ historias: grupo, index: index + 1 });
+      cargarHistoriaData(grupo[index + 1].id);
+      historiaTimer.current = setTimeout(() => avanzarHistoria(grupo, index + 1), 5000);
+    } else {
+      setHistoriaActiva(null);
+    }
+  }
+
+  function cerrarHistoria() {
+    clearTimeout(historiaTimer.current);
+    setHistoriaActiva(null);
+    setHistoriaLikes([]);
+    setHistoriaComentarios([]);
+    setHistoriaComentario('');
+  }
+
+  async function cargarHistoriaData(historiaId: number) {
+    const { data: likes } = await supabase
+      .from('historias_likes').select('*').eq('historia_id', historiaId);
+    if (likes) setHistoriaLikes(likes);
+
+    const { data: coms } = await supabase
+      .from('historias_comentarios').select('*').eq('historia_id', historiaId)
+      .order('created_at', { ascending: true });
+    if (coms) {
+      const userIds = [...new Set(coms.map((c: any) => c.user_id))];
+      const { data: perfiles } = await supabase
+        .from('perfiles').select('user_id, username').in('user_id', userIds);
+      const map: any = {};
+      if (perfiles) perfiles.forEach((p: any) => { map[p.user_id] = p.username; });
+      setHistoriaComentarios(coms.map((c: any) => ({ ...c, username: map[c.user_id] || 'Usuario' })));
+    }
+  }
+
+  async function darLikeHistoria() {
+    if (!userId || !historiaActiva) return;
+    const historia = historiaActiva.historias[historiaActiva.index];
+    const yaLike = historiaLikes.find((l: any) => l.user_id === userId);
+    if (yaLike) {
+      await supabase.from('historias_likes').delete().eq('id', yaLike.id);
+      setHistoriaLikes(historiaLikes.filter((l: any) => l.id !== yaLike.id));
+    } else {
+      await supabase.from('historias_likes').insert({ user_id: userId, historia_id: historia.id, emoji: '❤️' });
+      cargarHistoriaData(historia.id);
+    }
+  }
+
+  async function comentarHistoria() {
+    if (!userId || !historiaComentario.trim() || !historiaActiva) return;
+    const historia = historiaActiva.historias[historiaActiva.index];
+    await supabase.from('historias_comentarios').insert({
+      user_id: userId, historia_id: historia.id, texto: historiaComentario.trim(),
+    });
+    setHistoriaComentario('');
+    cargarHistoriaData(historia.id);
+  }
+
   async function darLike(id: number, likesActuales: number) {
     if (!userId || misLikes.includes(id)) return;
     await supabase.from('likes').insert({ user_id: userId, outfit_id: id });
@@ -182,7 +286,6 @@ export default function Feed() {
     const { data } = await supabase
       .from('comentarios').select('*').eq('outfit_id', outfitId)
       .order('created_at', { ascending: true });
-
     if (data) {
       const perfilesIds = [...new Set(data.map((c: any) => c.user_id))];
       const { data: perfilesData } = await supabase
@@ -234,11 +337,87 @@ export default function Feed() {
   }
 
   function irAPerfil(otroUserId: string, esMio: boolean) {
-    if (esMio) {
-      router.replace('/perfil');
-    } else {
-      router.push({ pathname: '/[id]', params: { id: otroUserId } });
-    }
+    if (esMio) router.replace('/perfil');
+    else router.push({ pathname: '/[id]', params: { id: otroUserId } });
+  }
+
+  // ── RENDER HISTORIA ACTIVA (Modal) ──
+  function renderModalHistoria() {
+    if (!historiaActiva) return null;
+    const historia = historiaActiva.historias[historiaActiva.index];
+    const grupo = historiaActiva.historias;
+    const yaLike = historiaLikes.find((l: any) => l.user_id === userId);
+
+    return (
+      <Modal visible animationType="fade" transparent={false}>
+        <View style={styles.historiaModal}>
+          {/* Barras de progreso */}
+          <View style={styles.historiaBars}>
+            {grupo.map((_: any, i: number) => (
+              <View key={i} style={[styles.historiaBar, i <= historiaActiva.index && styles.historiaBarActiva]} />
+            ))}
+          </View>
+
+          {/* Header */}
+          <View style={styles.historiaHeader}>
+            <View style={styles.historiaAvatar}>
+              <Text style={styles.historiaAvatarText}>
+                {(historia.username || 'U')[0].toUpperCase()}
+              </Text>
+            </View>
+            <Text style={styles.historiaUsername}>{historia.username}</Text>
+            <Text style={styles.historiaTiempo}>{tiempoAtras(historia.created_at)}</Text>
+            <TouchableOpacity onPress={cerrarHistoria} style={styles.historiaCerrar}>
+              <Text style={styles.historiaCerrarText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Imagen */}
+          <TouchableOpacity
+            style={styles.historiaImgWrap}
+            onPress={() => avanzarHistoria(grupo, historiaActiva.index)}
+            activeOpacity={1}
+          >
+            <img
+              src={historia.imagen_url}
+              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+            />
+          </TouchableOpacity>
+
+          {/* Comentarios */}
+          <View style={styles.historiaFooter}>
+            <ScrollView style={{ maxHeight: 120 }}>
+              {historiaComentarios.map((c: any) => (
+                <View key={c.id} style={styles.historiaComentario}>
+                  <Text style={styles.historiaComUser}>{c.username} </Text>
+                  <Text style={styles.historiaComTexto}>{c.texto}</Text>
+                </View>
+              ))}
+            </ScrollView>
+
+            <View style={styles.historiaAcciones}>
+              <TextInput
+                style={styles.historiaInput}
+                placeholder="responder..."
+                placeholderTextColor="#555"
+                value={historiaComentario}
+                onChangeText={setHistoriaComentario}
+                onSubmitEditing={comentarHistoria}
+              />
+              <TouchableOpacity onPress={comentarHistoria}>
+                <Text style={styles.historiaEnviar}>→</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={darLikeHistoria} style={styles.historiaLikeBtn}>
+                <Text style={[styles.historiaLike, yaLike && { color: GOLD }]}>
+                  {yaLike ? '♥' : '♡'}
+                </Text>
+                <Text style={styles.historiaLikeNum}>{historiaLikes.length}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
   }
 
   function renderOutfit({ item }: any) {
@@ -249,28 +428,19 @@ export default function Feed() {
     return (
       <View style={[styles.card, { backgroundColor: cardColor }]}>
         <View style={styles.cardHeader}>
-          <TouchableOpacity
-            style={styles.avatarWrap}
-            onPress={() => irAPerfil(item.user_id, esMio)}
-          >
+          <TouchableOpacity style={styles.avatarWrap} onPress={() => irAPerfil(item.user_id, esMio)}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {(item.username || 'U')[0].toUpperCase()}
-              </Text>
+              <Text style={styles.avatarText}>{(item.username || 'U')[0].toUpperCase()}</Text>
             </View>
             <View style={styles.onlineDot} />
           </TouchableOpacity>
 
           <View style={styles.cardHeaderInfo}>
             <TouchableOpacity onPress={() => irAPerfil(item.user_id, esMio)}>
-              <Text style={styles.username}>
-                {item.username || (esMio ? 'Tú' : 'Usuario')}
-              </Text>
+              <Text style={styles.username}>{item.username || (esMio ? 'Tú' : 'Usuario')}</Text>
             </TouchableOpacity>
             <View style={styles.metaRow}>
-              {item.categoria
-                ? <Text style={styles.categoriaInline}>{item.categoria}</Text>
-                : null}
+              {item.categoria ? <Text style={styles.categoriaInline}>{item.categoria}</Text> : null}
               <Text style={styles.tiempo}>{tiempoAtras(item.created_at)}</Text>
             </View>
           </View>
@@ -295,25 +465,14 @@ export default function Feed() {
         ) : null}
 
         {item.imagen_url ? (
-          <img
-            src={item.imagen_url}
-            style={{ width: '100%', height: 500, objectFit: 'contain', display: 'block', backgroundColor: '#000' }}
-          />
+          <img src={item.imagen_url} style={{ width: '100%', height: 500, objectFit: 'contain', display: 'block', backgroundColor: '#000' }} />
         ) : null}
 
         <View style={styles.cardFooter}>
           <View style={styles.acciones}>
-            <TouchableOpacity
-              style={styles.accionBtn}
-              onPress={() => darLike(item.id, item.likes || 0)}
-              disabled={yaLike}
-            >
-              <Text style={[styles.accionIcon, yaLike && styles.accionIconActivo]}>
-                {yaLike ? '♥' : '♡'}
-              </Text>
-              <Text style={[styles.accionNum, yaLike && { color: GOLD }]}>
-                {item.likes || 0}
-              </Text>
+            <TouchableOpacity style={styles.accionBtn} onPress={() => darLike(item.id, item.likes || 0)} disabled={yaLike}>
+              <Text style={[styles.accionIcon, yaLike && styles.accionIconActivo]}>{yaLike ? '♥' : '♡'}</Text>
+              <Text style={[styles.accionNum, yaLike && { color: GOLD }]}>{item.likes || 0}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -347,9 +506,7 @@ export default function Feed() {
                   placeholder="añadir comentario..."
                   placeholderTextColor="#333"
                   value={nuevoComentario[item.id] || ''}
-                  onChangeText={(text) =>
-                    setNuevoComentario((prev: any) => ({ ...prev, [item.id]: text }))
-                  }
+                  onChangeText={(text) => setNuevoComentario((prev: any) => ({ ...prev, [item.id]: text }))}
                 />
                 <TouchableOpacity onPress={() => publicarComentario(item.id)}>
                   <Text style={styles.btnEnviar}>→</Text>
@@ -364,50 +521,34 @@ export default function Feed() {
 
   return (
     <View style={styles.container}>
-      {/* HEADER FIJO */}
+      {/* HEADER */}
       <View style={styles.header}>
         <XhabaLogo />
         <View style={styles.headerActions}>
-          {/* Botón publicar compacto */}
-          <TouchableOpacity
-            style={styles.btnPublicarHeader}
-            onPress={() => setMostrarPublicar(!mostrarPublicar)}
-          >
+          <TouchableOpacity style={styles.btnPublicarHeader} onPress={() => setMostrarPublicar(!mostrarPublicar)}>
             <Text style={styles.btnPublicarHeaderText}>+ outfit</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.headerBtn}
-            onPress={() => router.push('/notificaciones' as any)}
-          >
+          <TouchableOpacity style={styles.headerBtn} onPress={() => router.push('/notificaciones' as any)}>
             <Text style={styles.headerBtnIcon}>🔔</Text>
             {notifCount > 0 && (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{notifCount}</Text>
-              </View>
+              <View style={styles.badge}><Text style={styles.badgeText}>{notifCount}</Text></View>
             )}
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.headerBtn}
-            onPress={() => router.replace('/mensajes')}
-          >
+          <TouchableOpacity style={styles.headerBtn} onPress={() => router.replace('/mensajes')}>
             <Text style={styles.headerBtnIcon}>✉</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* PUBLICAR — se despliega solo cuando se toca "+ outfit" */}
+      {/* PUBLICAR */}
       {mostrarPublicar && (
         <View style={styles.publicar}>
           <TouchableOpacity style={styles.btnFoto} onPress={seleccionarImagen}>
-            {imagen ? (
-              <Image source={{ uri: imagen }} style={styles.preview} resizeMode="cover" />
-            ) : (
-              <Text style={styles.btnFotoText}>+</Text>
-            )}
+            {imagen
+              ? <Image source={{ uri: imagen }} style={styles.preview} resizeMode="cover" />
+              : <Text style={styles.btnFotoText}>+</Text>
+            }
           </TouchableOpacity>
-
           <View style={styles.inputContainer}>
             <TextInput
               style={styles.input}
@@ -425,9 +566,7 @@ export default function Feed() {
                   style={[styles.categoriaBtn, categoria === cat && styles.categoriaBtnActivo]}
                   onPress={() => setCategoria(categoria === cat ? '' : cat)}
                 >
-                  <Text style={[styles.categoriaBtnText, categoria === cat && styles.categoriaBtnTextoActivo]}>
-                    {cat}
-                  </Text>
+                  <Text style={[styles.categoriaBtnText, categoria === cat && styles.categoriaBtnTextoActivo]}>{cat}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -440,23 +579,51 @@ export default function Feed() {
                 onPress={publicar}
                 disabled={loading || (!descripcion && !imagen)}
               >
-                {loading
-                  ? <ActivityIndicator color="#000" size="small" />
-                  : <Text style={styles.btnPublicarText}>publicar</Text>
-                }
+                {loading ? <ActivityIndicator color="#000" size="small" /> : <Text style={styles.btnPublicarText}>publicar</Text>}
               </TouchableOpacity>
             </View>
           </View>
         </View>
       )}
 
+      {/* HISTORIAS */}
+      <View style={styles.historiasWrap}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.historiasList}>
+          {/* Mi historia — botón agregar */}
+          <TouchableOpacity style={styles.historiaItem} onPress={publicarHistoria}>
+            <View style={[styles.historiaAvatar, styles.historiaAvatarMio]}>
+              <Text style={styles.historiaAvatarText}>{username ? username[0].toUpperCase() : '+'}</Text>
+              <View style={styles.historiaAddBadge}>
+                <Text style={styles.historiaAddText}>+</Text>
+              </View>
+            </View>
+            <Text style={styles.historiaLabel} numberOfLines={1}>tu historia</Text>
+          </TouchableOpacity>
+
+          {/* Historias de otros */}
+          {historias.map((grupo: any[], i: number) => {
+            const primera = grupo[0];
+            return (
+              <TouchableOpacity key={i} style={styles.historiaItem} onPress={() => abrirHistoria(grupo)}>
+                <View style={[styles.historiaAvatar, styles.historiaAvatarOtro]}>
+                  {primera.imagen_url ? (
+                    <img src={primera.imagen_url} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 50 }} />
+                  ) : (
+                    <Text style={styles.historiaAvatarText}>{(primera.username || 'U')[0].toUpperCase()}</Text>
+                  )}
+                </View>
+                <Text style={styles.historiaLabel} numberOfLines={1}>{primera.username}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
       {/* FEED */}
       {cargando ? (
         <ActivityIndicator color={GOLD} style={{ marginTop: 60 }} />
       ) : outfits.length === 0 ? (
-        <View style={styles.vacioCont}>
-          <Text style={styles.vacio}>sé el primero en publicar un outfit</Text>
-        </View>
+        <View style={styles.vacioCont}><Text style={styles.vacio}>sé el primero en publicar un outfit</Text></View>
       ) : (
         <FlatList
           data={outfits}
@@ -467,160 +634,143 @@ export default function Feed() {
           ItemSeparatorComponent={() => <View style={styles.separator} />}
         />
       )}
+
+      {/* MODAL HISTORIA */}
+      {renderModalHistoria()}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container:       { flex: 1, backgroundColor: BG },
-
-  // HEADER
   header: {
-    flexDirection:   'row',
-    justifyContent:  'space-between',
-    alignItems:      'center',
-    paddingHorizontal: 16,
-    paddingTop:      52,
-    paddingBottom:   12,
-    backgroundColor: BG,
-    borderBottomWidth: 1,
-    borderBottomColor: BORDER,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 16, paddingTop: 52, paddingBottom: 12,
+    backgroundColor: BG, borderBottomWidth: 1, borderBottomColor: BORDER,
   },
   logoContainer:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  logoText: {
-    fontSize:        22,
-    fontWeight:      '800',
-    color:           '#fff',
-    letterSpacing:   2,
-    fontStyle:       'italic',
-  },
+  logoText:        { fontSize: 22, fontWeight: '800', color: '#fff', letterSpacing: 2, fontStyle: 'italic' },
   headerActions:   { flexDirection: 'row', gap: 6, alignItems: 'center' },
-  btnPublicarHeader: {
-    backgroundColor: GOLD,
-    borderRadius:    20,
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-  },
-  btnPublicarHeaderText: {
-    color:           '#000',
-    fontWeight:      '700',
-    fontSize:        12,
-    letterSpacing:   0.5,
-  },
+  btnPublicarHeader: { backgroundColor: GOLD, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 14 },
+  btnPublicarHeaderText: { color: '#000', fontWeight: '700', fontSize: 12, letterSpacing: 0.5 },
   headerBtn: {
-    width:           36,
-    height:          36,
-    borderRadius:    18,
-    backgroundColor: '#161616',
-    borderWidth:     1,
-    borderColor:     BORDER,
-    justifyContent:  'center',
-    alignItems:      'center',
+    width: 36, height: 36, borderRadius: 18, backgroundColor: '#161616',
+    borderWidth: 1, borderColor: BORDER, justifyContent: 'center', alignItems: 'center',
   },
   headerBtnIcon:   { fontSize: 15 },
   badge: {
-    position:        'absolute',
-    top:             -2,
-    right:           -2,
-    backgroundColor: GOLD,
-    borderRadius:    8,
-    minWidth:        16,
-    height:          16,
-    justifyContent:  'center',
-    alignItems:      'center',
-    paddingHorizontal: 3,
+    position: 'absolute', top: -2, right: -2, backgroundColor: GOLD,
+    borderRadius: 8, minWidth: 16, height: 16, justifyContent: 'center',
+    alignItems: 'center', paddingHorizontal: 3,
   },
   badgeText:       { color: '#000', fontSize: 9, fontWeight: 'bold' },
 
   // PUBLICAR
   publicar: {
-    padding:         16,
-    borderBottomWidth: 1,
-    borderBottomColor: BORDER,
-    flexDirection:   'row',
-    gap:             12,
-    backgroundColor: '#0a0a0a',
+    padding: 16, borderBottomWidth: 1, borderBottomColor: BORDER,
+    flexDirection: 'row', gap: 12, backgroundColor: '#0a0a0a',
   },
   btnFoto: {
-    width:           48,
-    height:          48,
-    backgroundColor: '#161616',
-    borderRadius:    24,
-    borderWidth:     1,
-    borderColor:     GOLD,
-    justifyContent:  'center',
-    alignItems:      'center',
-    overflow:        'hidden',
+    width: 48, height: 48, backgroundColor: '#161616', borderRadius: 24,
+    borderWidth: 1, borderColor: GOLD, justifyContent: 'center', alignItems: 'center', overflow: 'hidden',
   },
   btnFotoText:     { fontSize: 22, color: GOLD },
   preview:         { width: 48, height: 48 },
   inputContainer:  { flex: 1, gap: 10 },
   input: {
-    color:           '#fff',
-    fontSize:        14,
-    paddingVertical: 4,
-    minHeight:       36,
-    borderBottomWidth: 1,
-    borderBottomColor: BORDER,
+    color: '#fff', fontSize: 14, paddingVertical: 4, minHeight: 36,
+    borderBottomWidth: 1, borderBottomColor: BORDER,
   },
   categorias:      { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   categoriaBtn: {
-    borderWidth:     1,
-    borderColor:     '#1e1e1e',
-    borderRadius:    20,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
+    borderWidth: 1, borderColor: '#1e1e1e', borderRadius: 20,
+    paddingVertical: 4, paddingHorizontal: 10,
   },
-  categoriaBtnActivo: { backgroundColor: GOLD, borderColor: GOLD },
+  categoriaBtnActivo:      { backgroundColor: GOLD, borderColor: GOLD },
   categoriaBtnText:        { color: '#3a3a3a', fontSize: 11 },
   categoriaBtnTextoActivo: { color: '#000', fontWeight: 'bold' },
-  publicarRow: {
-    flexDirection:   'row',
-    justifyContent:  'space-between',
-    alignItems:      'center',
-  },
+  publicarRow:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   btnCancelar:     { color: '#333', fontSize: 13 },
-  btnPublicar: {
-    backgroundColor: GOLD,
-    borderRadius:    20,
-    paddingVertical: 8,
-    paddingHorizontal: 22,
-  },
+  btnPublicar:     { backgroundColor: GOLD, borderRadius: 20, paddingVertical: 8, paddingHorizontal: 22 },
   btnDesactivado:  { backgroundColor: '#161616' },
   btnPublicarText: { color: '#000', fontWeight: '700', fontSize: 13, letterSpacing: 0.8 },
+
+  // HISTORIAS
+  historiasWrap: {
+    borderBottomWidth: 1, borderBottomColor: BORDER, backgroundColor: '#0a0a0a',
+  },
+  historiasList:   { paddingHorizontal: 12, paddingVertical: 12, gap: 12 },
+  historiaItem:    { alignItems: 'center', gap: 4, width: 64 },
+  historiaAvatar: {
+    width: 60, height: 60, borderRadius: 30, justifyContent: 'center',
+    alignItems: 'center', overflow: 'hidden', position: 'relative',
+  },
+  historiaAvatarMio: {
+    borderWidth: 2, borderColor: GOLD, backgroundColor: '#1a1a1a',
+  },
+  historiaAvatarOtro: {
+    borderWidth: 2, borderColor: GOLD, backgroundColor: '#1a1a1a',
+  },
+  historiaAvatarText: { color: GOLD, fontWeight: 'bold', fontSize: 20 },
+  historiaAddBadge: {
+    position: 'absolute', bottom: -2, right: -2, width: 20, height: 20,
+    borderRadius: 10, backgroundColor: GOLD, justifyContent: 'center', alignItems: 'center',
+    borderWidth: 2, borderColor: BG,
+  },
+  historiaAddText: { color: '#000', fontSize: 12, fontWeight: 'bold' },
+  historiaLabel:   { color: '#555', fontSize: 10, width: 64, textAlign: 'center' },
+
+  // MODAL HISTORIA
+  historiaModal:   { flex: 1, backgroundColor: '#000' },
+  historiaBars: {
+    flexDirection: 'row', gap: 4, paddingHorizontal: 12, paddingTop: 52, paddingBottom: 8,
+  },
+  historiaBar:     { flex: 1, height: 2, backgroundColor: '#333', borderRadius: 2 },
+  historiaBarActiva: { backgroundColor: GOLD },
+  historiaHeader: {
+    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 8, gap: 8,
+  },
+  historiaAvatar2: {
+    width: 32, height: 32, borderRadius: 16, backgroundColor: '#222',
+    borderWidth: 1.5, borderColor: GOLD, justifyContent: 'center', alignItems: 'center',
+  },
+  historiaUsername: { color: '#fff', fontWeight: '700', fontSize: 13, flex: 1 },
+  historiaTiempo:  { color: '#555', fontSize: 11 },
+  historiaCerrar:  { padding: 4 },
+  historiaCerrarText: { color: '#fff', fontSize: 18 },
+  historiaImgWrap: { flex: 1 },
+  historiaFooter: {
+    padding: 16, borderTopWidth: 1, borderTopColor: '#111',
+  },
+  historiaComentario: { flexDirection: 'row', marginBottom: 4 },
+  historiaComUser: { color: '#fff', fontWeight: '700', fontSize: 12 },
+  historiaComTexto: { color: '#888', fontSize: 12 },
+  historiaAcciones: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  historiaInput: {
+    flex: 1, backgroundColor: '#111', borderWidth: 1, borderColor: BORDER,
+    borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, color: '#fff', fontSize: 13,
+  },
+  historiaEnviar:  { color: GOLD, fontSize: 18 },
+  historiaLikeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  historiaLike:    { fontSize: 22, color: '#555' },
+  historiaLikeNum: { color: '#555', fontSize: 12 },
 
   // CARDS
   separator:       { height: 1, backgroundColor: BORDER },
   card:            { backgroundColor: CARD_BG },
   cardHeader: {
-    flexDirection:   'row',
-    alignItems:      'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap:             10,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 12, gap: 10,
   },
   avatarWrap:      { position: 'relative' },
   avatar: {
-    width:           36,
-    height:          36,
-    borderRadius:    18,
-    backgroundColor: '#1a1a1a',
-    borderWidth:     1.5,
-    borderColor:     GOLD,
-    justifyContent:  'center',
-    alignItems:      'center',
+    width: 36, height: 36, borderRadius: 18, backgroundColor: '#1a1a1a',
+    borderWidth: 1.5, borderColor: GOLD, justifyContent: 'center', alignItems: 'center',
   },
   avatarText:      { color: GOLD, fontWeight: 'bold', fontSize: 14 },
   onlineDot: {
-    position:        'absolute',
-    bottom:          0,
-    right:           0,
-    width:           9,
-    height:          9,
-    borderRadius:    5,
-    backgroundColor: '#4caf50',
-    borderWidth:     1.5,
-    borderColor:     BG,
+    position: 'absolute', bottom: 0, right: 0, width: 9, height: 9,
+    borderRadius: 5, backgroundColor: '#4caf50', borderWidth: 1.5, borderColor: BG,
   },
   cardHeaderInfo:  { flex: 1 },
   username:        { color: '#fff', fontWeight: '700', fontSize: 13, letterSpacing: 0.3 },
@@ -628,27 +778,16 @@ const styles = StyleSheet.create({
   categoriaInline: { color: GOLD, fontSize: 10, opacity: 0.7 },
   tiempo:          { color: '#2e2e2e', fontSize: 10 },
   btnSeguir: {
-    borderWidth:     1,
-    borderColor:     '#2a2a2a',
-    borderRadius:    20,
-    paddingVertical: 5,
-    paddingHorizontal: 14,
+    borderWidth: 1, borderColor: '#2a2a2a', borderRadius: 20,
+    paddingVertical: 5, paddingHorizontal: 14,
   },
   btnSiguiendo:    { backgroundColor: 'rgba(200,169,110,0.1)', borderColor: GOLD },
   btnSeguirText:   { color: '#555', fontSize: 11, fontWeight: '600', letterSpacing: 0.3 },
   btnSiguiendoText: { color: GOLD },
-  cardFooter: {
-    paddingHorizontal: 16,
-    paddingTop:      10,
-    paddingBottom:   14,
-    gap:             10,
-  },
+  cardFooter:      { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 14, gap: 10 },
   descripcion: {
-    color:           '#666',
-    fontSize:        13,
-    lineHeight:      19,
-    paddingHorizontal: 16,
-    paddingBottom:   8,
+    color: '#666', fontSize: 13, lineHeight: 19,
+    paddingHorizontal: 16, paddingBottom: 8,
   },
   usernameInline:  { color: '#ccc', fontWeight: '700' },
   acciones:        { flexDirection: 'row', gap: 22, alignItems: 'center' },
@@ -656,33 +795,18 @@ const styles = StyleSheet.create({
   accionIcon:      { fontSize: 19, color: '#333' },
   accionIconActivo: { color: GOLD },
   accionNum:       { color: '#333', fontSize: 13, fontWeight: '600' },
-  vacioCont: {
-    flex:            1,
-    justifyContent:  'center',
-    alignItems:      'center',
-    opacity:         0.4,
-  },
+  vacioCont:       { flex: 1, justifyContent: 'center', alignItems: 'center', opacity: 0.4 },
   vacio:           { color: '#555', fontSize: 14, letterSpacing: 0.5 },
   comentariosContainer: {
-    gap:             8,
-    paddingTop:      10,
-    borderTopWidth:  1,
-    borderTopColor:  BORDER,
+    gap: 8, paddingTop: 10, borderTopWidth: 1, borderTopColor: BORDER,
   },
   comentario:      { flexDirection: 'row', gap: 4 },
   comentarioUser:  { color: '#888', fontWeight: '700', fontSize: 12 },
   comentarioTexto: { color: '#555', fontSize: 12, flex: 1 },
   inputComentario: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
   inputComentarioTexto: {
-    flex:            1,
-    backgroundColor: '#0d0d0d',
-    borderWidth:     1,
-    borderColor:     BORDER,
-    borderRadius:    20,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    color:           '#fff',
-    fontSize:        12,
+    flex: 1, backgroundColor: '#0d0d0d', borderWidth: 1, borderColor: BORDER,
+    borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, color: '#fff', fontSize: 12,
   },
   btnEnviar:       { color: GOLD, fontSize: 18 },
 });

@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   StyleSheet,
   Text,
   TextInput,
@@ -12,15 +11,24 @@ import {
 } from 'react-native';
 import { supabase } from '../lib/supabase';
 
+const GOLD = '#c8a96e';
+const BG = '#0f0f0f';
+const BORDER = '#1e1e1e';
+
 export default function Perfil() {
   const [usuario, setUsuario] = useState<any>(null);
   const [outfits, setOutfits] = useState<any[]>([]);
   const [totalLikes, setTotalLikes] = useState(0);
+  const [seguidores, setSeguidores] = useState(0);
+  const [siguiendo, setSiguiendo] = useState(0);
   const [cargando, setCargando] = useState(true);
   const [editando, setEditando] = useState(false);
   const [username, setUsername] = useState('');
   const [bio, setBio] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarLocal, setAvatarLocal] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const [subiendo, setSubiendo] = useState(false);
   const [mensaje, setMensaje] = useState('');
 
   useEffect(() => {
@@ -33,48 +41,96 @@ export default function Perfil() {
     setUsuario(user);
 
     const { data: perfilData } = await supabase
-      .from('perfiles')
-      .select('*')
-      .eq('user_id', user.id)
-      .single();
+      .from('perfiles').select('*').eq('user_id', user.id).single();
 
     if (perfilData) {
       setUsername(perfilData.username || '');
       setBio(perfilData.bio || '');
+      setAvatarUrl(perfilData.avatar_url || null);
     }
 
     const { data } = await supabase
-      .from('outfits')
-      .select('*')
-      .eq('user_id', user.id)
+      .from('outfits').select('*').eq('user_id', user.id)
       .order('created_at', { ascending: false });
 
     if (data) {
       setOutfits(data);
-      const likes = data.reduce((acc: number, o: any) => acc + (o.likes || 0), 0);
-      setTotalLikes(likes);
+      setTotalLikes(data.reduce((acc: number, o: any) => acc + (o.likes || 0), 0));
     }
+
+    const { count: countSeg } = await supabase
+      .from('seguidores').select('*', { count: 'exact', head: true })
+      .eq('following_id', user.id);
+    setSeguidores(countSeg || 0);
+
+    const { count: countSig } = await supabase
+      .from('seguidores').select('*', { count: 'exact', head: true })
+      .eq('follower_id', user.id);
+    setSiguiendo(countSig || 0);
+
     setCargando(false);
   }
 
+  async function seleccionarAvatar() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async (e: any) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Mostrar preview local inmediatamente
+      const localUrl = URL.createObjectURL(file);
+      setAvatarLocal(localUrl);
+      setSubiendo(true);
+
+      try {
+        const fileName = `avatars/${user.id}_${Date.now()}.jpg`;
+        const { error } = await supabase.storage
+          .from('outfits')
+          .upload(fileName, file, { contentType: file.type, upsert: true });
+
+        if (error) {
+          console.log('Error subiendo:', error);
+          setSubiendo(false);
+          return;
+        }
+
+        const { data: urlData } = supabase.storage
+          .from('outfits').getPublicUrl(fileName);
+        const url = urlData.publicUrl;
+
+        setAvatarUrl(url);
+        setAvatarLocal(null);
+
+        await supabase.from('perfiles').upsert({
+          user_id: user.id, username, bio, avatar_url: url,
+        }, { onConflict: 'user_id' });
+
+        setMensaje('¡Foto actualizada!');
+        setTimeout(() => setMensaje(''), 2000);
+      } catch (err) {
+        console.log('Error:', err);
+      }
+      setSubiendo(false);
+    };
+    input.click();
+  }
+
   async function guardar() {
-    if (!username) {
-      setMensaje('El nombre es obligatorio');
-      return;
-    }
+    if (!username) { setMensaje('El nombre es obligatorio'); return; }
     setGuardando(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-
     await supabase.from('perfiles').upsert({
-      user_id: user.id,
-      username,
-      bio,
+      user_id: user.id, username, bio, avatar_url: avatarUrl,
     }, { onConflict: 'user_id' });
-
     setMensaje('¡Guardado!');
+    setTimeout(() => setMensaje(''), 2000);
     setEditando(false);
-    setMensaje('');
     setGuardando(false);
   }
 
@@ -83,21 +139,48 @@ export default function Perfil() {
     router.replace('/');
   }
 
+  function renderAvatar() {
+    const src = avatarLocal || avatarUrl;
+    if (src) {
+      return (
+        <img
+          src={src}
+          style={{
+            width: 90,
+            height: 90,
+            borderRadius: 45,
+            objectFit: 'cover',
+            display: 'block',
+            border: `2px solid ${GOLD}`,
+          }}
+        />
+      );
+    }
+    return (
+      <View style={styles.avatarPlaceholder}>
+        <Text style={styles.avatarLetra}>
+          {username ? username[0].toUpperCase() : '?'}
+        </Text>
+      </View>
+    );
+  }
+
   function renderOutfit({ item }: any) {
     return (
       <View style={styles.gridItem}>
         {item.imagen_url ? (
-          <Image
-            source={{ uri: item.imagen_url }}
-            style={styles.gridImagen}
-            resizeMode="cover"
+          <img
+            src={item.imagen_url}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />
         ) : (
           <View style={styles.gridPlaceholder}>
             <Text style={styles.placeholderText}>👕</Text>
           </View>
         )}
-        <Text style={styles.gridLikes}>❤️ {item.likes || 0}</Text>
+        <View style={styles.gridOverlay}>
+          <Text style={styles.gridLikes}>♥ {item.likes || 0}</Text>
+        </View>
       </View>
     );
   }
@@ -106,215 +189,217 @@ export default function Perfil() {
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.replace('/feed')}>
-          <Text style={styles.back}>← Feed</Text>
+          <Text style={styles.back}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.titulo}>Mi perfil</Text>
-        <TouchableOpacity onPress={() => setEditando(!editando)}>
-          <Text style={styles.editar}>{editando ? 'Cancelar' : 'Editar'}</Text>
+        <Text style={styles.titulo}>mi perfil</Text>
+        <TouchableOpacity onPress={() => { setEditando(!editando); setMensaje(''); }}>
+          <Text style={styles.editar}>{editando ? 'cancelar' : 'editar'}</Text>
         </TouchableOpacity>
       </View>
 
       {cargando ? (
-        <ActivityIndicator color="#fff" style={{ marginTop: 40 }} />
+        <ActivityIndicator color={GOLD} style={{ marginTop: 40 }} />
       ) : (
-        <>
-          <View style={styles.perfil}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>👤</Text>
-            </View>
-            {editando ? (
-              <View style={styles.formEditar}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="@tunombre"
-                  placeholderTextColor="#666"
-                  value={username}
-                  onChangeText={setUsername}
-                  autoCapitalize="none"
-                />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Tu bio..."
-                  placeholderTextColor="#666"
-                  value={bio}
-                  onChangeText={setBio}
-                />
-                {mensaje ? <Text style={styles.mensaje}>{mensaje}</Text> : null}
-                <TouchableOpacity style={styles.btnGuardar} onPress={guardar} disabled={guardando}>
-                  {guardando ? <ActivityIndicator color="#000" /> : <Text style={styles.btnGuardarText}>Guardar</Text>}
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <>
-                <Text style={styles.usernameText}>{username || usuario?.email}</Text>
-                {bio ? <Text style={styles.bioText}>{bio}</Text> : null}
-                <View style={styles.stats}>
-                  <View style={styles.stat}>
-                    <Text style={styles.statNum}>{outfits.length}</Text>
-                    <Text style={styles.statLabel}>Outfits</Text>
+        <FlatList
+          data={outfits}
+          keyExtractor={(item) => item.id.toString()}
+          renderItem={renderOutfit}
+          numColumns={3}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 40 }}
+          ListHeaderComponent={
+            <View style={styles.perfil}>
+              {/* Avatar */}
+              <TouchableOpacity onPress={seleccionarAvatar} style={styles.avatarWrap}>
+                {subiendo ? (
+                  <View style={styles.avatarPlaceholder}>
+                    <ActivityIndicator color={GOLD} />
                   </View>
-                  <View style={styles.stat}>
-                    <Text style={styles.statNum}>{totalLikes}</Text>
-                    <Text style={styles.statLabel}>Likes</Text>
-                  </View>
+                ) : renderAvatar()}
+                <View style={styles.avatarEditBadge}>
+                  <Text style={styles.avatarEditText}>+</Text>
                 </View>
-              </>
-            )}
-          </View>
+              </TouchableOpacity>
 
-          <FlatList
-            data={outfits}
-            keyExtractor={(item) => item.id.toString()}
-            renderItem={renderOutfit}
-            numColumns={3}
-            columnWrapperStyle={{ flexWrap: 'wrap' }}
-            contentContainerStyle={{ paddingBottom: 40 }}
-            ListEmptyComponent={
-              <Text style={styles.vacio}>Aún no has publicado outfits 👕</Text>
-            }
-          />
-        </>
+              {mensaje ? <Text style={styles.mensaje}>{mensaje}</Text> : null}
+
+              {editando ? (
+                <View style={styles.formEditar}>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="@tunombre"
+                    placeholderTextColor="#333"
+                    value={username}
+                    onChangeText={setUsername}
+                    autoCapitalize="none"
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="tu bio..."
+                    placeholderTextColor="#333"
+                    value={bio}
+                    onChangeText={setBio}
+                    multiline
+                  />
+                  <TouchableOpacity style={styles.btnGuardar} onPress={guardar} disabled={guardando}>
+                    {guardando
+                      ? <ActivityIndicator color="#000" />
+                      : <Text style={styles.btnGuardarText}>guardar</Text>
+                    }
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <>
+                  <Text style={styles.usernameText}>@{username || usuario?.email}</Text>
+                  {bio ? <Text style={styles.bioText}>{bio}</Text> : null}
+
+                  <View style={styles.stats}>
+                    <View style={styles.stat}>
+                      <Text style={styles.statNum}>{outfits.length}</Text>
+                      <Text style={styles.statLabel}>outfits</Text>
+                    </View>
+                    <View style={styles.statDivider} />
+                    <View style={styles.stat}>
+                      <Text style={styles.statNum}>{totalLikes}</Text>
+                      <Text style={styles.statLabel}>likes</Text>
+                    </View>
+                    <View style={styles.statDivider} />
+                    <View style={styles.stat}>
+                      <Text style={styles.statNum}>{seguidores}</Text>
+                      <Text style={styles.statLabel}>seguidores</Text>
+                    </View>
+                    <View style={styles.statDivider} />
+                    <View style={styles.stat}>
+                      <Text style={styles.statNum}>{siguiendo}</Text>
+                      <Text style={styles.statLabel}>siguiendo</Text>
+                    </View>
+                  </View>
+
+                  <TouchableOpacity style={styles.btnSalir} onPress={handleLogout}>
+                    <Text style={styles.btnSalirText}>cerrar sesión</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+
+              <View style={styles.gridHeader}>
+                <Text style={styles.gridHeaderText}>mis outfits</Text>
+              </View>
+            </View>
+          }
+          ListEmptyComponent={
+            <Text style={styles.vacio}>aún no has publicado outfits 👕</Text>
+          }
+        />
       )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000000',
-  },
+  container:       { flex: 1, backgroundColor: BG },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection:   'row',
+    justifyContent:  'space-between',
+    alignItems:      'center',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingTop:      52,
+    paddingBottom:   14,
     borderBottomWidth: 1,
-    borderBottomColor: '#1a1a1a',
+    borderBottomColor: BORDER,
   },
-  back: {
-    color: '#fff',
-    fontSize: 14,
+  back:            { color: GOLD, fontSize: 22 },
+  titulo:          { color: '#fff', fontSize: 15, fontWeight: '700', letterSpacing: 1 },
+  editar:          { color: GOLD, fontSize: 13, letterSpacing: 0.5 },
+  perfil:          { alignItems: 'center', paddingVertical: 28, gap: 10 },
+  avatarWrap:      { position: 'relative', marginBottom: 4 },
+  avatarPlaceholder: {
+    width:           90,
+    height:          90,
+    borderRadius:    45,
+    backgroundColor: '#1a1a1a',
+    borderWidth:     2,
+    borderColor:     GOLD,
+    justifyContent:  'center',
+    alignItems:      'center',
   },
-  titulo: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
+  avatarLetra:     { color: GOLD, fontSize: 32, fontWeight: 'bold' },
+  avatarEditBadge: {
+    position:        'absolute',
+    bottom:          0,
+    right:           0,
+    width:           26,
+    height:          26,
+    borderRadius:    13,
+    backgroundColor: GOLD,
+    justifyContent:  'center',
+    alignItems:      'center',
+    borderWidth:     2,
+    borderColor:     BG,
   },
-  editar: {
-    color: '#fff',
-    fontSize: 14,
-  },
-  perfil: {
-    alignItems: 'center',
-    paddingVertical: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1a1a1a',
-  },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#222',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  avatarText: {
-    fontSize: 36,
-  },
-  usernameText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  bioText: {
-    color: '#aaa',
-    fontSize: 14,
-    marginBottom: 16,
-    textAlign: 'center',
-    paddingHorizontal: 40,
-  },
-  formEditar: {
-    width: '80%',
-    gap: 10,
-  },
+  avatarEditText:  { color: '#000', fontSize: 16, fontWeight: 'bold' },
+  usernameText:    { color: '#fff', fontSize: 17, fontWeight: '700', letterSpacing: 0.5 },
+  bioText:         { color: '#444', fontSize: 13, textAlign: 'center', paddingHorizontal: 40 },
+  formEditar:      { width: '80%', gap: 10 },
   input: {
     backgroundColor: '#111',
-    borderWidth: 1,
-    borderColor: '#333',
-    borderRadius: 12,
-    padding: 12,
-    color: '#fff',
-    fontSize: 14,
+    borderWidth:     1,
+    borderColor:     BORDER,
+    borderRadius:    12,
+    padding:         14,
+    color:           '#fff',
+    fontSize:        14,
   },
-  mensaje: {
-    color: '#4CAF50',
-    textAlign: 'center',
-    fontSize: 13,
-  },
+  mensaje:         { color: '#4caf50', textAlign: 'center', fontSize: 13 },
   btnGuardar: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 12,
-    alignItems: 'center',
+    backgroundColor: GOLD,
+    borderRadius:    12,
+    padding:         14,
+    alignItems:      'center',
   },
-  btnGuardarText: {
-    color: '#000',
-    fontWeight: 'bold',
-  },
+  btnGuardarText:  { color: '#000', fontWeight: 'bold', fontSize: 14 },
   stats: {
-    flexDirection: 'row',
-    gap: 40,
-    marginTop: 12,
+    flexDirection:   'row',
+    gap:             16,
+    alignItems:      'center',
+    marginTop:       4,
   },
-  stat: {
-    alignItems: 'center',
+  stat:            { alignItems: 'center', gap: 2 },
+  statNum:         { color: '#fff', fontSize: 18, fontWeight: '800' },
+  statLabel:       { color: '#333', fontSize: 10, letterSpacing: 0.5 },
+  statDivider:     { width: 1, height: 28, backgroundColor: BORDER },
+  btnSalir: {
+    borderWidth:     1,
+    borderColor:     '#222',
+    borderRadius:    20,
+    paddingVertical: 6,
+    paddingHorizontal: 20,
+    marginTop:       4,
   },
-  statNum: {
-    color: '#fff',
-    fontSize: 22,
-    fontWeight: 'bold',
+  btnSalirText:    { color: '#333', fontSize: 12, letterSpacing: 0.5 },
+  gridHeader: {
+    width:           '100%',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth:  1,
+    borderTopColor:  BORDER,
+    marginTop:       8,
   },
-  statLabel: {
-    color: '#555',
-    fontSize: 12,
-    marginTop: 2,
-  },
+  gridHeaderText:  { color: '#2a2a2a', fontSize: 11, letterSpacing: 1.5 },
   gridItem: {
-    width: '32%',
-    height: 150,
-    margin: '0.5%',
-  },
-  gridImagen: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 4,
+    width:           '33.33%',
+    aspectRatio:     1,
+    padding:         1,
+    position:        'relative',
   },
   gridPlaceholder: {
-    width: '100%',
-    height: '100%',
+    width:           '100%',
+    height:          '100%',
     backgroundColor: '#111',
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent:  'center',
+    alignItems:      'center',
   },
-  placeholderText: {
-    fontSize: 32,
-  },
-  gridLikes: {
-    position: 'absolute',
-    bottom: 4,
-    left: 4,
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  vacio: {
-    color: '#555',
-    textAlign: 'center',
-    marginTop: 60,
-    fontSize: 16,
-  },
+  placeholderText: { fontSize: 28 },
+  gridOverlay:     { position: 'absolute', bottom: 4, left: 4 },
+  gridLikes:       { color: '#fff', fontSize: 11, fontWeight: '700' },
+  vacio:           { color: '#333', textAlign: 'center', marginTop: 60, fontSize: 14 },
 });
