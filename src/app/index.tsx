@@ -95,7 +95,7 @@ export default function Index() {
     setLoading(true);
     setMessage('');
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: 'https://xhaba.vercel.app/reset-password',
+      redirectTo: 'https://xhaba.com.mx/reset-password',
     });
     if (error) {
       showMessage(error.message);
