@@ -69,7 +69,7 @@ export default function Feed() {
   const [nuevoComentario, setNuevoComentario] = useState<any>({});
   const [mostrarComentarios, setMostrarComentarios] = useState<any>({});
   const [categoria, setCategoria] = useState('');
-  const [notifCount] = useState(3);
+  const [notifCount, setNotifCount] = useState(0);
   const [mostrarPublicar, setMostrarPublicar] = useState(false);
   const historiaTimer = useRef<any>(null);
 
@@ -80,7 +80,10 @@ export default function Feed() {
   }, []);
 
   useEffect(() => {
-    if (userId) cargarSiguiendo();
+    if (userId) {
+      cargarSiguiendo();
+      cargarNotifCount();
+    }
   }, [userId]);
 
   async function cargarUsuario() {
@@ -93,6 +96,16 @@ export default function Feed() {
     }
   }
 
+  async function cargarNotifCount() {
+    if (!userId) return;
+    const { count } = await supabase
+      .from('notificaciones')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('leida', false);
+    setNotifCount(count || 0);
+  }
+
   async function cargarHistorias() {
     const { data } = await supabase
       .from('historias')
@@ -103,15 +116,18 @@ export default function Feed() {
     if (data) {
       const userIds = [...new Set(data.map((h: any) => h.user_id))];
       const { data: perfiles } = await supabase
-        .from('perfiles').select('user_id, username').in('user_id', userIds);
+        .from('perfiles').select('user_id, username, avatar_url').in('user_id', userIds);
       const perfilesMap: any = {};
-      if (perfiles) perfiles.forEach((p: any) => { perfilesMap[p.user_id] = p.username; });
+      if (perfiles) perfiles.forEach((p: any) => { perfilesMap[p.user_id] = p; });
 
-      // Agrupar por usuario
       const grupos: any = {};
       data.forEach((h: any) => {
         if (!grupos[h.user_id]) grupos[h.user_id] = [];
-        grupos[h.user_id].push({ ...h, username: perfilesMap[h.user_id] || 'Usuario' });
+        grupos[h.user_id].push({
+          ...h,
+          username: perfilesMap[h.user_id]?.username || 'Usuario',
+          avatar_url: perfilesMap[h.user_id]?.avatar_url || null,
+        });
       });
 
       setHistorias(Object.values(grupos));
@@ -125,10 +141,14 @@ export default function Feed() {
     if (data) {
       const userIds = [...new Set(data.map((o: any) => o.user_id))];
       const { data: perfilesData } = await supabase
-        .from('perfiles').select('user_id, username').in('user_id', userIds);
+        .from('perfiles').select('user_id, username, avatar_url').in('user_id', userIds);
       const perfilesMap: any = {};
-      if (perfilesData) perfilesData.forEach((p: any) => { perfilesMap[p.user_id] = p.username; });
-      setOutfits(data.map((o: any) => ({ ...o, username: perfilesMap[o.user_id] || null })));
+      if (perfilesData) perfilesData.forEach((p: any) => { perfilesMap[p.user_id] = p; });
+      setOutfits(data.map((o: any) => ({
+        ...o,
+        username: perfilesMap[o.user_id]?.username || null,
+        avatar_url: perfilesMap[o.user_id]?.avatar_url || null,
+      })));
     }
 
     const { data: { user } } = await supabase.auth.getUser();
@@ -211,7 +231,6 @@ export default function Feed() {
   async function abrirHistoria(grupo: any[]) {
     setHistoriaActiva({ historias: grupo, index: 0 });
     cargarHistoriaData(grupo[0].id);
-    // Auto avanzar cada 5 segundos
     historiaTimer.current = setTimeout(() => avanzarHistoria(grupo, 0), 5000);
   }
 
@@ -261,6 +280,15 @@ export default function Feed() {
       setHistoriaLikes(historiaLikes.filter((l: any) => l.id !== yaLike.id));
     } else {
       await supabase.from('historias_likes').insert({ user_id: userId, historia_id: historia.id, emoji: '❤️' });
+      // Notificacion al dueño de la historia
+      if (historia.user_id !== userId) {
+        await supabase.from('notificaciones').insert({
+          user_id: historia.user_id,
+          de_user_id: userId,
+          tipo: 'historia_like',
+          referencia_id: historia.id,
+        });
+      }
       cargarHistoriaData(historia.id);
     }
   }
@@ -271,14 +299,32 @@ export default function Feed() {
     await supabase.from('historias_comentarios').insert({
       user_id: userId, historia_id: historia.id, texto: historiaComentario.trim(),
     });
+    // Notificacion
+    if (historia.user_id !== userId) {
+      await supabase.from('notificaciones').insert({
+        user_id: historia.user_id,
+        de_user_id: userId,
+        tipo: 'historia_comentario',
+        referencia_id: historia.id,
+      });
+    }
     setHistoriaComentario('');
     cargarHistoriaData(historia.id);
   }
 
-  async function darLike(id: number, likesActuales: number) {
+  async function darLike(id: number, likesActuales: number, outfitUserId: string) {
     if (!userId || misLikes.includes(id)) return;
     await supabase.from('likes').insert({ user_id: userId, outfit_id: id });
     await supabase.from('outfits').update({ likes: likesActuales + 1 }).eq('id', id);
+    // Notificacion
+    if (outfitUserId !== userId) {
+      await supabase.from('notificaciones').insert({
+        user_id: outfitUserId,
+        de_user_id: userId,
+        tipo: 'like',
+        referencia_id: id,
+      });
+    }
     cargarOutfits();
   }
 
@@ -299,12 +345,21 @@ export default function Feed() {
     }
   }
 
-  async function publicarComentario(outfitId: number) {
+  async function publicarComentario(outfitId: number, outfitUserId: string) {
     const texto = nuevoComentario[outfitId];
     if (!texto) return;
     await supabase.from('comentarios').insert({
       user_id: userId, outfit_id: outfitId, texto, created_at: new Date().toISOString(),
     });
+    // Notificacion
+    if (outfitUserId !== userId) {
+      await supabase.from('notificaciones').insert({
+        user_id: outfitUserId,
+        de_user_id: userId,
+        tipo: 'comentario',
+        referencia_id: outfitId,
+      });
+    }
     setNuevoComentario((prev: any) => ({ ...prev, [outfitId]: '' }));
     cargarComentarios(outfitId);
   }
@@ -325,6 +380,12 @@ export default function Feed() {
     } else {
       await supabase.from('seguidores').insert({ follower_id: userId, following_id: otherUserId });
       setSiguiendo([...siguiendo, otherUserId]);
+      // Notificacion
+      await supabase.from('notificaciones').insert({
+        user_id: otherUserId,
+        de_user_id: userId,
+        tipo: 'seguidor',
+      });
     }
   }
 
@@ -341,7 +402,6 @@ export default function Feed() {
     else router.push({ pathname: '/[id]', params: { id: otroUserId } });
   }
 
-  // ── RENDER HISTORIA ACTIVA (Modal) ──
   function renderModalHistoria() {
     if (!historiaActiva) return null;
     const historia = historiaActiva.historias[historiaActiva.index];
@@ -351,19 +411,19 @@ export default function Feed() {
     return (
       <Modal visible animationType="fade" transparent={false}>
         <View style={styles.historiaModal}>
-          {/* Barras de progreso */}
           <View style={styles.historiaBars}>
             {grupo.map((_: any, i: number) => (
               <View key={i} style={[styles.historiaBar, i <= historiaActiva.index && styles.historiaBarActiva]} />
             ))}
           </View>
 
-          {/* Header */}
           <View style={styles.historiaHeader}>
-            <View style={styles.historiaAvatar}>
-              <Text style={styles.historiaAvatarText}>
-                {(historia.username || 'U')[0].toUpperCase()}
-              </Text>
+            <View style={styles.historiaAvatarSmall}>
+              {historia.avatar_url ? (
+                <img src={historia.avatar_url} style={{ width: 32, height: 32, borderRadius: 16, objectFit: 'cover' }} />
+              ) : (
+                <Text style={styles.historiaAvatarText}>{(historia.username || 'U')[0].toUpperCase()}</Text>
+              )}
             </View>
             <Text style={styles.historiaUsername}>{historia.username}</Text>
             <Text style={styles.historiaTiempo}>{tiempoAtras(historia.created_at)}</Text>
@@ -372,19 +432,14 @@ export default function Feed() {
             </TouchableOpacity>
           </View>
 
-          {/* Imagen */}
           <TouchableOpacity
             style={styles.historiaImgWrap}
             onPress={() => avanzarHistoria(grupo, historiaActiva.index)}
             activeOpacity={1}
           >
-            <img
-              src={historia.imagen_url}
-              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-            />
+            <img src={historia.imagen_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
           </TouchableOpacity>
 
-          {/* Comentarios */}
           <View style={styles.historiaFooter}>
             <ScrollView style={{ maxHeight: 120 }}>
               {historiaComentarios.map((c: any) => (
@@ -394,7 +449,6 @@ export default function Feed() {
                 </View>
               ))}
             </ScrollView>
-
             <View style={styles.historiaAcciones}>
               <TextInput
                 style={styles.historiaInput}
@@ -430,7 +484,14 @@ export default function Feed() {
         <View style={styles.cardHeader}>
           <TouchableOpacity style={styles.avatarWrap} onPress={() => irAPerfil(item.user_id, esMio)}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{(item.username || 'U')[0].toUpperCase()}</Text>
+              {item.avatar_url ? (
+                <img
+                  src={item.avatar_url}
+                  style={{ width: 36, height: 36, borderRadius: 18, objectFit: 'cover', display: 'block' }}
+                />
+              ) : (
+                <Text style={styles.avatarText}>{(item.username || 'U')[0].toUpperCase()}</Text>
+              )}
             </View>
             <View style={styles.onlineDot} />
           </TouchableOpacity>
@@ -470,7 +531,7 @@ export default function Feed() {
 
         <View style={styles.cardFooter}>
           <View style={styles.acciones}>
-            <TouchableOpacity style={styles.accionBtn} onPress={() => darLike(item.id, item.likes || 0)} disabled={yaLike}>
+            <TouchableOpacity style={styles.accionBtn} onPress={() => darLike(item.id, item.likes || 0, item.user_id)} disabled={yaLike}>
               <Text style={[styles.accionIcon, yaLike && styles.accionIconActivo]}>{yaLike ? '♥' : '♡'}</Text>
               <Text style={[styles.accionNum, yaLike && { color: GOLD }]}>{item.likes || 0}</Text>
             </TouchableOpacity>
@@ -508,7 +569,7 @@ export default function Feed() {
                   value={nuevoComentario[item.id] || ''}
                   onChangeText={(text) => setNuevoComentario((prev: any) => ({ ...prev, [item.id]: text }))}
                 />
-                <TouchableOpacity onPress={() => publicarComentario(item.id)}>
+                <TouchableOpacity onPress={() => publicarComentario(item.id, item.user_id)}>
                   <Text style={styles.btnEnviar}>→</Text>
                 </TouchableOpacity>
               </View>
@@ -528,7 +589,7 @@ export default function Feed() {
           <TouchableOpacity style={styles.btnPublicarHeader} onPress={() => setMostrarPublicar(!mostrarPublicar)}>
             <Text style={styles.btnPublicarHeaderText}>+ outfit</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.headerBtn} onPress={() => router.push('/notificaciones' as any)}>
+          <TouchableOpacity style={styles.headerBtn} onPress={() => { router.push('/notificaciones' as any); setNotifCount(0); }}>
             <Text style={styles.headerBtnIcon}>🔔</Text>
             {notifCount > 0 && (
               <View style={styles.badge}><Text style={styles.badgeText}>{notifCount}</Text></View>
@@ -589,7 +650,6 @@ export default function Feed() {
       {/* HISTORIAS */}
       <View style={styles.historiasWrap}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.historiasList}>
-          {/* Mi historia — botón agregar */}
           <TouchableOpacity style={styles.historiaItem} onPress={publicarHistoria}>
             <View style={[styles.historiaAvatar, styles.historiaAvatarMio]}>
               <Text style={styles.historiaAvatarText}>{username ? username[0].toUpperCase() : '+'}</Text>
@@ -600,13 +660,14 @@ export default function Feed() {
             <Text style={styles.historiaLabel} numberOfLines={1}>tu historia</Text>
           </TouchableOpacity>
 
-          {/* Historias de otros */}
           {historias.map((grupo: any[], i: number) => {
             const primera = grupo[0];
             return (
               <TouchableOpacity key={i} style={styles.historiaItem} onPress={() => abrirHistoria(grupo)}>
                 <View style={[styles.historiaAvatar, styles.historiaAvatarOtro]}>
-                  {primera.imagen_url ? (
+                  {primera.avatar_url ? (
+                    <img src={primera.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 50 }} />
+                  ) : primera.imagen_url ? (
                     <img src={primera.imagen_url} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 50 }} />
                   ) : (
                     <Text style={styles.historiaAvatarText}>{(primera.username || 'U')[0].toUpperCase()}</Text>
@@ -635,7 +696,6 @@ export default function Feed() {
         />
       )}
 
-      {/* MODAL HISTORIA */}
       {renderModalHistoria()}
     </View>
   );
@@ -664,8 +724,6 @@ const styles = StyleSheet.create({
     alignItems: 'center', paddingHorizontal: 3,
   },
   badgeText:       { color: '#000', fontSize: 9, fontWeight: 'bold' },
-
-  // PUBLICAR
   publicar: {
     padding: 16, borderBottomWidth: 1, borderBottomColor: BORDER,
     flexDirection: 'row', gap: 12, backgroundColor: '#0a0a0a',
@@ -694,24 +752,16 @@ const styles = StyleSheet.create({
   btnPublicar:     { backgroundColor: GOLD, borderRadius: 20, paddingVertical: 8, paddingHorizontal: 22 },
   btnDesactivado:  { backgroundColor: '#161616' },
   btnPublicarText: { color: '#000', fontWeight: '700', fontSize: 13, letterSpacing: 0.8 },
-
-  // HISTORIAS
-  historiasWrap: {
-    borderBottomWidth: 1, borderBottomColor: BORDER, backgroundColor: '#0a0a0a',
-  },
+  historiasWrap:   { borderBottomWidth: 1, borderBottomColor: BORDER, backgroundColor: '#0a0a0a' },
   historiasList:   { paddingHorizontal: 12, paddingVertical: 12, gap: 12 },
   historiaItem:    { alignItems: 'center', gap: 4, width: 64 },
   historiaAvatar: {
     width: 60, height: 60, borderRadius: 30, justifyContent: 'center',
     alignItems: 'center', overflow: 'hidden', position: 'relative',
   },
-  historiaAvatarMio: {
-    borderWidth: 2, borderColor: GOLD, backgroundColor: '#1a1a1a',
-  },
-  historiaAvatarOtro: {
-    borderWidth: 2, borderColor: GOLD, backgroundColor: '#1a1a1a',
-  },
-  historiaAvatarText: { color: GOLD, fontWeight: 'bold', fontSize: 20 },
+  historiaAvatarMio:   { borderWidth: 2, borderColor: GOLD, backgroundColor: '#1a1a1a' },
+  historiaAvatarOtro:  { borderWidth: 2, borderColor: GOLD, backgroundColor: '#1a1a1a' },
+  historiaAvatarText:  { color: GOLD, fontWeight: 'bold', fontSize: 20 },
   historiaAddBadge: {
     position: 'absolute', bottom: -2, right: -2, width: 20, height: 20,
     borderRadius: 10, backgroundColor: GOLD, justifyContent: 'center', alignItems: 'center',
@@ -719,29 +769,21 @@ const styles = StyleSheet.create({
   },
   historiaAddText: { color: '#000', fontSize: 12, fontWeight: 'bold' },
   historiaLabel:   { color: '#555', fontSize: 10, width: 64, textAlign: 'center' },
-
-  // MODAL HISTORIA
   historiaModal:   { flex: 1, backgroundColor: '#000' },
-  historiaBars: {
-    flexDirection: 'row', gap: 4, paddingHorizontal: 12, paddingTop: 52, paddingBottom: 8,
-  },
+  historiaBars:    { flexDirection: 'row', gap: 4, paddingHorizontal: 12, paddingTop: 52, paddingBottom: 8 },
   historiaBar:     { flex: 1, height: 2, backgroundColor: '#333', borderRadius: 2 },
   historiaBarActiva: { backgroundColor: GOLD },
-  historiaHeader: {
-    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 8, gap: 8,
-  },
-  historiaAvatar2: {
+  historiaHeader:  { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 8, gap: 8 },
+  historiaAvatarSmall: {
     width: 32, height: 32, borderRadius: 16, backgroundColor: '#222',
-    borderWidth: 1.5, borderColor: GOLD, justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1.5, borderColor: GOLD, justifyContent: 'center', alignItems: 'center', overflow: 'hidden',
   },
   historiaUsername: { color: '#fff', fontWeight: '700', fontSize: 13, flex: 1 },
   historiaTiempo:  { color: '#555', fontSize: 11 },
   historiaCerrar:  { padding: 4 },
   historiaCerrarText: { color: '#fff', fontSize: 18 },
   historiaImgWrap: { flex: 1 },
-  historiaFooter: {
-    padding: 16, borderTopWidth: 1, borderTopColor: '#111',
-  },
+  historiaFooter:  { padding: 16, borderTopWidth: 1, borderTopColor: '#111' },
   historiaComentario: { flexDirection: 'row', marginBottom: 4 },
   historiaComUser: { color: '#fff', fontWeight: '700', fontSize: 12 },
   historiaComTexto: { color: '#888', fontSize: 12 },
@@ -754,8 +796,6 @@ const styles = StyleSheet.create({
   historiaLikeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   historiaLike:    { fontSize: 22, color: '#555' },
   historiaLikeNum: { color: '#555', fontSize: 12 },
-
-  // CARDS
   separator:       { height: 1, backgroundColor: BORDER },
   card:            { backgroundColor: CARD_BG },
   cardHeader: {
@@ -766,6 +806,7 @@ const styles = StyleSheet.create({
   avatar: {
     width: 36, height: 36, borderRadius: 18, backgroundColor: '#1a1a1a',
     borderWidth: 1.5, borderColor: GOLD, justifyContent: 'center', alignItems: 'center',
+    overflow: 'hidden',
   },
   avatarText:      { color: GOLD, fontWeight: 'bold', fontSize: 14 },
   onlineDot: {
@@ -797,9 +838,7 @@ const styles = StyleSheet.create({
   accionNum:       { color: '#333', fontSize: 13, fontWeight: '600' },
   vacioCont:       { flex: 1, justifyContent: 'center', alignItems: 'center', opacity: 0.4 },
   vacio:           { color: '#555', fontSize: 14, letterSpacing: 0.5 },
-  comentariosContainer: {
-    gap: 8, paddingTop: 10, borderTopWidth: 1, borderTopColor: BORDER,
-  },
+  comentariosContainer: { gap: 8, paddingTop: 10, borderTopWidth: 1, borderTopColor: BORDER },
   comentario:      { flexDirection: 'row', gap: 4 },
   comentarioUser:  { color: '#888', fontWeight: '700', fontSize: 12 },
   comentarioTexto: { color: '#555', fontSize: 12, flex: 1 },
